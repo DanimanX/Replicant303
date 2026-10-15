@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/replicant303_ui.png" alt="Replicant 303 UI - Behringer TD-3 Translucent Green Skin" width="950">
+  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 UI - Behringer TD-3 Translucent Green Skin with 80s Digital LED Tempo Clock" width="950">
 </p>
 
 ---
