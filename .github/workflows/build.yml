@@ -31,7 +31,7 @@ jobs:
 
           - os: windows-latest
             platform: windows
-            cmake_generator: "Visual Studio 17 2022"
+            cmake_generator: "Ninja"
             artifact_name: "Replicant303-Windows-x64"
 
     defaults:
@@ -43,6 +43,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      # ------------------------------------------------------------------------
+      # MSVC Environment Setup (Windows)
+      # ------------------------------------------------------------------------
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       # ------------------------------------------------------------------------
       # Linux Dependencies
@@ -110,11 +117,7 @@ jobs:
           # Create zip archive
           mkdir -p release-zip
           cd package-staging
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            powershell -Command "Compress-Archive -Path * -DestinationPath ../release-zip/${{ matrix.artifact_name }}.zip" || zip -r ../release-zip/${{ matrix.artifact_name }}.zip . || 7z a ../release-zip/${{ matrix.artifact_name }}.zip .
-          else
-            zip -r ../release-zip/${{ matrix.artifact_name }}.zip .
-          fi
+          zip -r ../release-zip/${{ matrix.artifact_name }}.zip . || powershell -Command "Compress-Archive -Path * -DestinationPath ../release-zip/${{ matrix.artifact_name }}.zip -Force"
           cd ..
 
       # ------------------------------------------------------------------------
