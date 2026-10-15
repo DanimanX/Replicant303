@@ -8,6 +8,9 @@ on:
     branches: [ master, main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build on ${{ matrix.os }}
@@ -30,6 +33,10 @@ jobs:
             platform: windows
             cmake_generator: "Visual Studio 17 2022"
             artifact_name: "Replicant303-Windows-x64"
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout Repository
@@ -65,9 +72,11 @@ jobs:
       # ------------------------------------------------------------------------
       - name: Configure CMake
         run: |
-          cmake -B build -G "${{ matrix.cmake_generator }}" \
-            -DCMAKE_BUILD_TYPE=Release \
-            ${{ matrix.platform == 'macos' && '-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"' || '' }}
+          EXTRA_FLAGS=""
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            EXTRA_FLAGS="-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+          fi
+          cmake -B build -G "${{ matrix.cmake_generator }}" -DCMAKE_BUILD_TYPE=Release $EXTRA_FLAGS
 
       # ------------------------------------------------------------------------
       # Build Plugin (VST3, AU, Standalone)
@@ -77,36 +86,93 @@ jobs:
           cmake --build build --config Release --parallel
 
       # ------------------------------------------------------------------------
-      # Prepare Artifacts
+      # Collect & Package Artifacts
       # ------------------------------------------------------------------------
-      - name: Prepare Artifacts (macOS)
-        if: runner.os == 'macOS'
+      - name: Collect & Package Artifacts
         run: |
-          mkdir -p release-artifacts
-          cp -R build/Replicant303_artefacts/Release/VST3/Replicant303.vst3 release-artifacts/ || true
-          cp -R build/Replicant303_artefacts/Release/AU/Replicant303.component release-artifacts/ || true
-          cp -R build/Replicant303_artefacts/Release/Standalone/Replicant303.app release-artifacts/ || true
+          mkdir -p package-staging
+          
+          # Find and copy VST3 bundle
+          find build -type d -name "Replicant303.vst3" -exec cp -R {} package-staging/ \; || true
+          
+          # Find and copy AU bundle (macOS)
+          find build -type d -name "Replicant303.component" -exec cp -R {} package-staging/ \; || true
+          
+          # Find and copy Standalone App / Executable
+          find build -type d -name "Replicant303.app" -exec cp -R {} package-staging/ \; || true
+          find build -type f -name "Replicant303.exe" -exec cp {} package-staging/ \; || true
+          
+          # Linux Standalone binary
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            find build -type f -executable -name "Replicant303" ! -name "*.so" ! -name "*.o" ! -path "*/CMakeFiles/*" -exec cp {} package-staging/ \; || true
+          fi
 
-      - name: Prepare Artifacts (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p release-artifacts
-          cp -R build/Replicant303_artefacts/Release/VST3/Replicant303.vst3 release-artifacts/ || true
-          cp build/Replicant303_artefacts/Release/Standalone/Replicant303 release-artifacts/ || true
-
-      - name: Prepare Artifacts (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          mkdir -p release-artifacts
-          cp -R build/Replicant303_artefacts/Release/VST3/Replicant303.vst3 release-artifacts/ || true
-          cp build/Replicant303_artefacts/Release/Standalone/Replicant303.exe release-artifacts/ || true
+          # Create zip archive
+          mkdir -p release-zip
+          cd package-staging
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            powershell -Command "Compress-Archive -Path * -DestinationPath ../release-zip/${{ matrix.artifact_name }}.zip" || zip -r ../release-zip/${{ matrix.artifact_name }}.zip . || 7z a ../release-zip/${{ matrix.artifact_name }}.zip .
+          else
+            zip -r ../release-zip/${{ matrix.artifact_name }}.zip .
+          fi
+          cd ..
 
       # ------------------------------------------------------------------------
-      # Upload Artifacts
+      # Upload Artifact
       # ------------------------------------------------------------------------
-      - name: Upload Build Artifacts
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: release-artifacts/
+          path: release-zip/*.zip
+
+  # ----------------------------------------------------------------------------
+  # Release Job: Creates a GitHub Release with all platform ZIPs
+  # ----------------------------------------------------------------------------
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download all Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+
+      - name: Prepare Release Files
+        run: |
+          mkdir -p release-assets
+          find downloaded-artifacts -type f -name "*.zip" -exec cp {} release-assets/ \;
+          ls -la release-assets
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "Replicant303 v1.0.0 - Multiplatform Release"
+          body: |
+            ## 🎛️ Replicant303 - Virtual Analog TB-303 Synthesizer
+            **Translucent Green Edition (Behringer TD-3 Skin) with Enhanced Multi-Distortion (PocoRat)**
+
+            ### 📦 Binarios Listos para Usar:
+            * **macOS Universal:** `Replicant303-macOS-Universal.zip` (VST3, AU `.component` y Standalone compatible con Apple Silicon M1/M2/M3/M4 e Intel)
+            * **Linux x86_64:** `Replicant303-Linux-x86_64.zip` (VST3 y ejecutable Standalone para Ubuntu, Debian, Arch, Fedora)
+            * **Windows x64:** `Replicant303-Windows-x64.zip` (VST3 y Standalone `.exe` para Windows 10 y 11)
+
+            ### 🚀 Características:
+            * Replicación analógica virtual completa: Sawtooth exponencial y Square con droop RC nasal.
+            * Filtro Diode Ladder de 4 polos con saturación $\tanh$, desacoplamiento AC y auto-oscilación.
+            * Envolventes gemelas interactivas con acortamiento por Acento y Slide continuo legato (~60ms).
+            * **Motor de Distorsión Mejorado:** PocoRat (ProCo Rat con filtro inverso), TubeDrive, HardClip, Germanium Fuzz y Acid Wavefolder.
+            * Skin Behringer TD-3 verde translúcido con LEDs reactivos de Slide y Accent.
+          draft: false
+          prerelease: false
+          files: release-assets/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
