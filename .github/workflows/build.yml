@@ -1,0 +1,112 @@
+name: Build Replicant303 Multiplatform (macOS, Linux, Windows)
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+            cmake_generator: "Xcode"
+            artifact_name: "Replicant303-macOS-Universal"
+
+          - os: ubuntu-22.04
+            platform: linux
+            cmake_generator: "Unix Makefiles"
+            artifact_name: "Replicant303-Linux-x86_64"
+
+          - os: windows-latest
+            platform: windows
+            cmake_generator: "Visual Studio 17 2022"
+            artifact_name: "Replicant303-Windows-x64"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ------------------------------------------------------------------------
+      # Linux Dependencies
+      # ------------------------------------------------------------------------
+      - name: Install Linux Audio & GUI Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libjack-jackd2-dev \
+            ladspa-sdk \
+            libcurl4-openssl-dev \
+            libfreetype6-dev \
+            libx11-dev \
+            libxcomposite-dev \
+            libxcursor-dev \
+            libxext-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            libxrender-dev \
+            mesa-common-dev \
+            libgl1-mesa-dev
+
+      # ------------------------------------------------------------------------
+      # Configure CMake
+      # ------------------------------------------------------------------------
+      - name: Configure CMake
+        run: |
+          cmake -B build -G "${{ matrix.cmake_generator }}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            ${{ matrix.platform == 'macos' && '-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"' || '' }}
+
+      # ------------------------------------------------------------------------
+      # Build Plugin (VST3, AU, Standalone)
+      # ------------------------------------------------------------------------
+      - name: Build Targets
+        run: |
+          cmake --build build --config Release --parallel
+
+      # ------------------------------------------------------------------------
+      # Prepare Artifacts
+      # ------------------------------------------------------------------------
+      - name: Prepare Artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p release-artifacts
+          cp -R build/Replicant303_artefacts/Release/VST3/Replicant303.vst3 release-artifacts/ || true
+          cp -R build/Replicant303_artefacts/Release/AU/Replicant303.component release-artifacts/ || true
+          cp -R build/Replicant303_artefacts/Release/Standalone/Replicant303.app release-artifacts/ || true
+
+      - name: Prepare Artifacts (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release-artifacts
+          cp -R build/Replicant303_artefacts/Release/VST3/Replicant303.vst3 release-artifacts/ || true
+          cp build/Replicant303_artefacts/Release/Standalone/Replicant303 release-artifacts/ || true
+
+      - name: Prepare Artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          cp -R build/Replicant303_artefacts/Release/VST3/Replicant303.vst3 release-artifacts/ || true
+          cp build/Replicant303_artefacts/Release/Standalone/Replicant303.exe release-artifacts/ || true
+
+      # ------------------------------------------------------------------------
+      # Upload Artifacts
+      # ------------------------------------------------------------------------
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release-artifacts/
