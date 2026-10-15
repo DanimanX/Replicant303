@@ -12,10 +12,12 @@ Replicant303AudioProcessor::Replicant303AudioProcessor()
     resonanceParam  = apvts.getRawParameterValue("resonance");
     envModParam     = apvts.getRawParameterValue("env_mod");
     decayParam      = apvts.getRawParameterValue("decay");
-    accentParam     = apvts.getRawParameterValue("accent");
-    volumeParam     = apvts.getRawParameterValue("volume");
+    accentParam       = apvts.getRawParameterValue("accent");
+    volumeParam       = apvts.getRawParameterValue("volume");
+    tempoParam        = apvts.getRawParameterValue("tempo");
+    patternGroupParam = apvts.getRawParameterValue("pattern_group");
 
-    distActiveParam = apvts.getRawParameterValue("dist_active");
+    distActiveParam   = apvts.getRawParameterValue("dist_active");
     distTypeParam   = apvts.getRawParameterValue("dist_type");
     distDriveParam  = apvts.getRawParameterValue("dist_drive");
     distToneParam   = apvts.getRawParameterValue("dist_tone");
@@ -38,6 +40,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout Replicant303AudioProcessor::
         juce::ParameterID{ "tuning", 1 }, "Tuning",
         juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f,
         juce::AudioParameterFloatAttributes().withLabel("semi")));
+
+    // 2b. Tempo (40 to 300 BPM)
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ "tempo", 1 }, "Tempo",
+        juce::NormalisableRange<float>(40.0f, 300.0f, 0.5f), 125.0f,
+        juce::AudioParameterFloatAttributes().withLabel("BPM")));
+
+    // 2c. Pattern Group (I, II, III, IV)
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{ "pattern_group", 1 }, "Pattern Group",
+        juce::StringArray{ "Group I", "Group II", "Group III", "Group IV" }, 0));
 
     // 3. Cutoff (25 Hz to 4500 Hz, logarithmic skew)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(

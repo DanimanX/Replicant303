@@ -19,10 +19,10 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
     setupKnob(distMixKnob,   "dist_mix",   "LEVEL");
 
     // 3. Middle Row Knobs & Selectors
-    setupKnob(tempoKnob,     "tuning",     "TEMPO",    true);
-    setupKnob(trackKnob,     "tuning",     "TRACK",    true);
-    setupKnob(distTypeKnob,  "dist_type",  "MODE",     true);
-    setupKnob(volumeKnob,    "volume",     "VOLUME",   true);
+    setupKnob(tempoKnob,     "tempo",         "TEMPO",    true);
+    setupKnob(trackKnob,     "pattern_group", "TRACK",    true);
+    setupKnob(distTypeKnob,  "dist_type",     "MODE",     true);
+    setupKnob(volumeKnob,    "volume",        "VOLUME",   true);
 
     // 4. Waveform Slide Switch (Saw / Square)
     addAndMakeVisible(waveformSwitch);

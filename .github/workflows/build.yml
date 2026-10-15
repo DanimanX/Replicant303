@@ -143,6 +143,28 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Next Release Version
+        id: versioning
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            RELEASE_TAG="${{ github.ref_name }}"
+          else
+            git fetch --tags --force || true
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+            VERSION="${LATEST_TAG#v}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            MAJOR=${MAJOR:-1}
+            MINOR=${MINOR:-0}
+            PATCH=${PATCH:-0}
+            PATCH=$((PATCH + 1))
+            RELEASE_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+          echo "tag=${RELEASE_TAG}" >> $GITHUB_OUTPUT
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_ENV
+          echo "Release tag will be: ${RELEASE_TAG}"
 
       - name: Download all Build Artifacts
         uses: actions/download-artifact@v4
@@ -158,10 +180,10 @@ jobs:
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "Replicant303 v1.0.0 - Multiplatform Release"
+          tag_name: ${{ steps.versioning.outputs.tag }}
+          name: "Replicant303 ${{ steps.versioning.outputs.tag }} - Multiplatform Release"
           body: |
-            ## 🎛️ Replicant303 - Virtual Analog TB-303 Synthesizer
+            ## 🎛️ Replicant303 - Virtual Analog TB-303 Synthesizer (${{ steps.versioning.outputs.tag }})
             **Translucent Green Edition (Behringer TD-3 Skin) with Enhanced Multi-Distortion (PocoRat)**
 
             ### 📦 Binarios Listos para Usar:

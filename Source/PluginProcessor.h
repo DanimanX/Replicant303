@@ -58,6 +58,8 @@ private:
     std::atomic<float>* decayParam = nullptr;
     std::atomic<float>* accentParam = nullptr;
     std::atomic<float>* volumeParam = nullptr;
+    std::atomic<float>* tempoParam = nullptr;
+    std::atomic<float>* patternGroupParam = nullptr;
 
     std::atomic<float>* distActiveParam = nullptr;
     std::atomic<float>* distTypeParam = nullptr;
