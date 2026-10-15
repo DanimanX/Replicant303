@@ -1,0 +1,36 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+out/
+bin/
+
+# JUCE FetchContent & cache
+_deps/
+.cache/
+
+# IDE files
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/
+*.sln
+*.vcxproj*
+.DS_Store
+
+# Temporary & intermediate files
+*.o
+*.obj
+*.d
+*.ninja*
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Audio plugin build outputs
+*.vst3/
+*.component/
+*.clap/
+*.app/
+*.exe
