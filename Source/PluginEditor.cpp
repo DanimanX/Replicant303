@@ -24,6 +24,10 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
     setupKnob(distTypeKnob,  "dist_type",     "MODE",     true);
     setupKnob(volumeKnob,    "volume",        "VOLUME",   true);
 
+    tempoKnob.slider.onValueChange = [this]() {
+        repaint(495, 8, 150, 40);
+    };
+
     // 4. Waveform Slide Switch (Saw / Square)
     addAndMakeVisible(waveformSwitch);
     waveformSwitch.setButtonText("");
@@ -250,6 +254,7 @@ void Replicant303AudioProcessorEditor::timerCallback()
             key.isPressed = false;
     }
 
+    repaint(495, 8, 150, 40);
     repaint(0, 245, getWidth(), getHeight() - 245);
 }
 
@@ -925,6 +930,214 @@ void Replicant303AudioProcessorEditor::drawPianoKeysAndLeds(juce::Graphics& g)
     }
 }
 
+void Replicant303AudioProcessorEditor::draw7SegmentDigit(juce::Graphics& g, float x, float y, float w, float h, char digit)
+{
+    // Bitmask for segments: bit 0=a, 1=b, 2=c, 3=d, 4=e, 5=f, 6=g
+    uint8_t mask = 0;
+    switch (digit)
+    {
+        case '0': mask = 0b00111111; break; // a, b, c, d, e, f
+        case '1': mask = 0b00000110; break; // b, c
+        case '2': mask = 0b01011011; break; // a, b, d, e, g
+        case '3': mask = 0b01001111; break; // a, b, c, d, g
+        case '4': mask = 0b01100110; break; // b, c, f, g
+        case '5': mask = 0b01101101; break; // a, c, d, f, g
+        case '6': mask = 0b01111101; break; // a, c, d, e, f, g
+        case '7': mask = 0b00000111; break; // a, b, c
+        case '8': mask = 0b01111111; break; // all 7
+        case '9': mask = 0b01101111; break; // a, b, c, d, f, g
+        case '-': mask = 0b01000000; break; // g only
+        default:  mask = 0;          break; // space / unlit
+    }
+
+    const float t = 2.4f;      // Segment thickness
+    const float gap = 0.75f;   // Gap between segments
+    const float my = y + h * 0.5f;
+
+    juce::Path segA, segB, segC, segD, segE, segF, segG;
+
+    // Segment A (Top horizontal)
+    segA.startNewSubPath(x + t * 0.9f + gap, y);
+    segA.lineTo(x + w - t * 0.9f - gap, y);
+    segA.lineTo(x + w - t * 1.6f - gap, y + t);
+    segA.lineTo(x + t * 1.6f + gap, y + t);
+    segA.closeSubPath();
+
+    // Segment B (Top-right vertical)
+    segB.startNewSubPath(x + w - t, y + t * 1.5f + gap);
+    segB.lineTo(x + w, y + t * 0.9f + gap);
+    segB.lineTo(x + w, my - gap * 0.6f);
+    segB.lineTo(x + w - t * 0.5f, my - gap * 0.6f);
+    segB.lineTo(x + w - t, my - t * 0.5f - gap * 0.6f);
+    segB.closeSubPath();
+
+    // Segment C (Bottom-right vertical)
+    segC.startNewSubPath(x + w - t, my + t * 0.5f + gap * 0.6f);
+    segC.lineTo(x + w - t * 0.5f, my + gap * 0.6f);
+    segC.lineTo(x + w, my + gap * 0.6f);
+    segC.lineTo(x + w, y + h - t * 0.9f - gap);
+    segC.lineTo(x + w - t, y + h - t * 1.5f - gap);
+    segC.closeSubPath();
+
+    // Segment D (Bottom horizontal)
+    segD.startNewSubPath(x + t * 1.6f + gap, y + h - t);
+    segD.lineTo(x + w - t * 1.6f - gap, y + h - t);
+    segD.lineTo(x + w - t * 0.9f - gap, y + h);
+    segD.lineTo(x + t * 0.9f + gap, y + h);
+    segD.closeSubPath();
+
+    // Segment E (Bottom-left vertical)
+    segE.startNewSubPath(x, my + gap * 0.6f);
+    segE.lineTo(x + t * 0.5f, my + gap * 0.6f);
+    segE.lineTo(x + t, my + t * 0.5f + gap * 0.6f);
+    segE.lineTo(x + t, y + h - t * 1.5f - gap);
+    segE.lineTo(x, y + h - t * 0.9f - gap);
+    segE.closeSubPath();
+
+    // Segment F (Top-left vertical)
+    segF.startNewSubPath(x, y + t * 0.9f + gap);
+    segF.lineTo(x + t, y + t * 1.5f + gap);
+    segF.lineTo(x + t, my - t * 0.5f - gap * 0.6f);
+    segF.lineTo(x + t * 0.5f, my - gap * 0.6f);
+    segF.lineTo(x, my - gap * 0.6f);
+    segF.closeSubPath();
+
+    // Segment G (Middle horizontal)
+    segG.startNewSubPath(x + t * 0.9f + gap, my);
+    segG.lineTo(x + t * 1.4f + gap, my - t * 0.5f);
+    segG.lineTo(x + w - t * 1.4f - gap, my - t * 0.5f);
+    segG.lineTo(x + w - t * 0.9f - gap, my);
+    segG.lineTo(x + w - t * 1.4f - gap, my + t * 0.5f);
+    segG.lineTo(x + t * 1.4f + gap, my + t * 0.5f);
+    segG.closeSubPath();
+
+    // 80s LED display slight italic slant (~5 degrees)
+    auto slantTransform = juce::AffineTransform::shear(-0.09f, 0.0f)
+                              .translated((y + h * 0.5f) * 0.09f, 0.0f);
+
+    juce::Path* segs[7] = { &segA, &segB, &segC, &segD, &segE, &segF, &segG };
+    for (auto* p : segs)
+        p->applyTransform(slantTransform);
+
+    // 80s Red LED Color Palette
+    const juce::Colour unlitSegColor  = juce::Colour(0xff220407).withAlpha(0.70f); // Dark ghost segment
+    const juce::Colour litGlowColor   = juce::Colour(0xffff1220).withAlpha(0.38f); // Diffuse red bloom
+    const juce::Colour litCoreColor   = juce::Colour(0xffff2832);                  // Solid hot LED red
+    const juce::Colour litFilament    = juce::Colour(0xffffd0d8).withAlpha(0.85f); // White-hot center filament
+
+    for (int i = 0; i < 7; ++i)
+    {
+        bool isLit = (mask & (1 << i)) != 0;
+        if (isLit)
+        {
+            // 1. Soft red diffuse bloom halo
+            g.setColour(litGlowColor);
+            g.strokePath(*segs[i], juce::PathStrokeType(3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+            // 2. Solid bright LED body
+            g.setColour(litCoreColor);
+            g.fillPath(*segs[i]);
+
+            // 3. Hot filament core highlight
+            g.setColour(litFilament);
+            g.strokePath(*segs[i], juce::PathStrokeType(0.8f));
+        }
+        else
+        {
+            // Faint dark red unlit segment visible behind smoked filter
+            g.setColour(unlitSegColor);
+            g.fillPath(*segs[i]);
+        }
+    }
+}
+
+void Replicant303AudioProcessorEditor::drawDigitalTempoClock(juce::Graphics& g)
+{
+    // 80s Digital LED Clock Display (Centered in Header: x = 502, y = 11, w = 132, h = 32)
+    const float boxX = 502.0f;
+    const float boxY = 11.0f;
+    const float boxW = 132.0f;
+    const float boxH = 32.0f;
+
+    // 1. Recessed drop shadow in green acrylic chassis
+    g.setColour(juce::Colours::black.withAlpha(0.55f));
+    g.fillRoundedRectangle(boxX, boxY + 1.5f, boxW, boxH, 3.5f);
+
+    // 2. Beveled Dark Frame / Bezel
+    juce::ColourGradient bezelGrad(juce::Colour(0xff28302a), boxX, boxY,
+                                   juce::Colour(0xff101411), boxX, boxY + boxH, false);
+    g.setGradientFill(bezelGrad);
+    g.fillRoundedRectangle(boxX, boxY, boxW, boxH, 3.5f);
+
+    g.setColour(juce::Colour(0xff3f4d42));
+    g.drawRoundedRectangle(boxX, boxY, boxW, boxH, 3.5f, 1.0f);
+
+    // 3. Deep Black Display Chamber
+    auto displayArea = juce::Rectangle<float>(boxX + 4.0f, boxY + 3.0f, boxW - 8.0f, boxH - 6.0f);
+    g.setColour(juce::Colour(0xff050706));
+    g.fillRoundedRectangle(displayArea, 2.0f);
+
+    // 4. Smoked Filter Glass (dark red-tinted acrylic lens)
+    g.setColour(juce::Colour(0xff180204).withAlpha(0.60f));
+    g.fillRoundedRectangle(displayArea, 2.0f);
+
+    // 5. Authentic 80s LED filter horizontal micro-ribs
+    g.setColour(juce::Colours::black.withAlpha(0.20f));
+    for (float ry = displayArea.getY() + 2.0f; ry < displayArea.getBottom() - 1.0f; ry += 2.0f)
+        g.drawHorizontalLine((int)ry, displayArea.getX() + 2.0f, displayArea.getRight() - 2.0f);
+
+    // 6. Labels: TEMPO (top-left) and BPM (bottom-right)
+    g.setColour(juce::Colour(0xffb8c2ba));
+    g.setFont(juce::FontOptions(7.5f, juce::Font::bold));
+    g.drawText("TEMPO", (int)displayArea.getX() + 5, (int)displayArea.getY() + 8, 36, 10, juce::Justification::centredLeft);
+
+    g.setColour(juce::Colour(0xffff2834).withAlpha(0.85f));
+    g.setFont(juce::FontOptions(8.0f, juce::Font::bold));
+    g.drawText("BPM", (int)displayArea.getRight() - 27, (int)displayArea.getBottom() - 12, 24, 10, juce::Justification::centredRight);
+
+    // 7. Render 3 7-Segment Digits
+    float tempoVal = 125.0f;
+    auto* param = audioProcessor.apvts.getRawParameterValue("tempo");
+    if (param != nullptr)
+        tempoVal = param->load();
+    else
+        tempoVal = (float)tempoKnob.slider.getValue();
+
+    int bpmInt = juce::jlimit(40, 300, juce::roundToInt(tempoVal));
+    juce::String bpmStr = juce::String(bpmInt).paddedLeft(' ', 3);
+
+    const float digitW = 15.0f;
+    const float digitH = 19.0f;
+    const float spacing = 5.0f;
+    const float startX = boxX + 43.0f;
+    const float digitY = boxY + 6.5f;
+
+    for (int i = 0; i < 3; ++i)
+    {
+        char c = (i < bpmStr.length()) ? static_cast<char>(bpmStr[i]) : ' ';
+        draw7SegmentDigit(g, startX + i * (digitW + spacing), digitY, digitW, digitH, c);
+    }
+
+    // 8. Flashing/Glowing Beat Dot (Active LED pulse)
+    auto beatDot = juce::Rectangle<float>(boxX + 104.0f, boxY + 8.0f, 4.5f, 4.5f);
+    g.setColour(juce::Colour(0xffff2028).withAlpha(0.40f));
+    g.fillEllipse(beatDot.expanded(2.5f));
+    g.setColour(juce::Colour(0xffff2028));
+    g.fillEllipse(beatDot);
+    g.setColour(juce::Colours::white.withAlpha(0.80f));
+    g.fillEllipse(beatDot.reduced(1.2f).translated(-0.4f, -0.4f));
+
+    // 9. Diagonal Specular Glass Reflection
+    juce::Path glassGlare;
+    glassGlare.startNewSubPath(displayArea.getX(), displayArea.getY());
+    glassGlare.lineTo(displayArea.getX() + 45.0f, displayArea.getY());
+    glassGlare.lineTo(displayArea.getX() + 18.0f, displayArea.getBottom());
+    glassGlare.lineTo(displayArea.getX(), displayArea.getBottom());
+    glassGlare.closeSubPath();
+    g.setColour(juce::Colours::white.withAlpha(0.07f));
+    g.fillPath(glassGlare);
+}
+
 void Replicant303AudioProcessorEditor::paint(juce::Graphics& g)
 {
     // Layer 1: Procedural 3D PCB Underlay with ICs, Capacitors, Resistors, Copper Traces & Vias
@@ -935,6 +1148,9 @@ void Replicant303AudioProcessorEditor::paint(juce::Graphics& g)
 
     // Layer 3: Crisp Silkscreen Markings, Jack Sockets, Labels & Embossed Logo
     drawSilkscreenGraphics(g);
+
+    // 80s Digital Red LED Tempo Clock (Top Center)
+    drawDigitalTempoClock(g);
 
     // Layer 4: 13-Key Tactile Keyboard, Function Buttons & Glowing Red LEDs
     drawPianoKeysAndLeds(g);

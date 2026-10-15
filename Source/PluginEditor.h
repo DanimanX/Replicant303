@@ -106,6 +106,8 @@ private:
     void drawTransistor(juce::Graphics& g, float x, float y, const juce::String& partNumber);
     void drawCapacitor(juce::Graphics& g, float x, float y, float radius, juce::Colour canColour);
     void drawResistor(juce::Graphics& g, float x1, float y1, float x2, float y2, juce::Colour b1, juce::Colour b2, juce::Colour b3);
+    void drawDigitalTempoClock(juce::Graphics& g);
+    void draw7SegmentDigit(juce::Graphics& g, float x, float y, float w, float h, char digit);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Replicant303AudioProcessorEditor)
 };
