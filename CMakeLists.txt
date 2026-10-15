@@ -102,7 +102,7 @@ target_link_libraries(Replicant303 PRIVATE
 # ------------------------------------------------------------------------------
 # UI Snapshot Generator (Internal tool for docs & README preview)
 # ------------------------------------------------------------------------------
-add_executable(generate_snapshot
+add_executable(generate_snapshot EXCLUDE_FROM_ALL
     tools/generate_snapshot.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
