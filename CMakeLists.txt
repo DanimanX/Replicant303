@@ -98,3 +98,28 @@ target_link_libraries(Replicant303 PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
+
+# ------------------------------------------------------------------------------
+# UI Snapshot Generator (Internal tool for docs & README preview)
+# ------------------------------------------------------------------------------
+add_executable(generate_snapshot
+    tools/generate_snapshot.cpp
+    Source/PluginProcessor.cpp
+    Source/PluginEditor.cpp
+    Source/DSP/Oscillator303.cpp
+    Source/DSP/DiodeLadderFilter.cpp
+    Source/DSP/DistortionUnit.cpp
+    Source/DSP/SynthEngine.cpp
+    Source/GUI/TranslucentGreenLookAndFeel.cpp
+)
+target_include_directories(generate_snapshot PRIVATE Source Source/DSP Source/GUI)
+target_link_libraries(generate_snapshot PRIVATE
+    juce::juce_audio_utils
+    juce::juce_audio_processors
+    juce::juce_dsp
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_warning_flags
+)
+

@@ -19,6 +19,10 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
+#ifndef JucePlugin_Name
+#define JucePlugin_Name "Replicant303"
+#endif
+
     const juce::String getName() const override { return JucePlugin_Name; }
 
     bool acceptsMidi() const override { return true; }

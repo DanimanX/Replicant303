@@ -10,12 +10,12 @@ namespace Replicant303
         TranslucentGreenLookAndFeel();
         ~TranslucentGreenLookAndFeel() override = default;
 
-        // Custom Rotary Slider Drawing (303 style with metallic cap and neon pointer)
+        // Custom Rotary Slider Drawing (TD-3 style: fluted cylindrical skirt, spun aluminum cap)
         void drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
                               float sliderPosProportional, float rotaryStartAngle,
                               float rotaryEndAngle, juce::Slider& slider) override;
 
-        // Custom Toggle Button (Vintage tactile switch)
+        // Custom Toggle Button (Tactile button with LED)
         void drawToggleButton(juce::Graphics& g, juce::ToggleButton& button,
                               bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
 
@@ -29,15 +29,23 @@ namespace Replicant303
                                const juce::String& shortcutKeyText,
                                const juce::Drawable* icon, const juce::Colour* textColour) override;
 
-        // Color Constants
-        static const juce::Colour bgDeepGreen;
-        static const juce::Colour bgMidGreen;
-        static const juce::Colour bgLightGreen;
-        static const juce::Colour neonGreen;
-        static const juce::Colour neonRed;
-        static const juce::Colour knobMetalBright;
-        static const juce::Colour knobMetalDark;
-        static const juce::Colour textSilver;
-        static const juce::Colour borderOutline;
+        // Helpers for drawing authentic hardware elements
+        static void drawKnobTicks(juce::Graphics& g, float centerX, float centerY, float radius,
+                                 float startAngle, float endAngle, int numTicks = 11);
+        static void drawJackSocket(juce::Graphics& g, float centerX, float centerY, float diameter, const juce::String& label);
+        static void drawSlideSwitch(juce::Graphics& g, const juce::Rectangle<float>& bounds, bool isOn, const juce::String& labelLeft, const juce::String& labelRight);
+
+        // Color Constants based on the Behringer TD-3-TG
+        static const juce::Colour acrylicGreen;       // Vibrant translucent green
+        static const juce::Colour acrylicHighlight;   // Glossy rim green
+        static const juce::Colour pcbDarkGreen;       // PCB substrate below
+        static const juce::Colour pcbTraceGreen;      // Copper traces
+        static const juce::Colour moldBossGreen;      // Translucent mold bosses/pillars
+        static const juce::Colour ledBrightRed;       // 303 Red LED active
+        static const juce::Colour ledDarkRed;         // 303 Red LED unlit
+        static const juce::Colour spunAluminumBright; // Knob cap top
+        static const juce::Colour spunAluminumDark;   // Knob cap shadow
+        static const juce::Colour knobRibColor;       // Fluted knob skirt
+        static const juce::Colour silkscreenWhite;    // Crisp white panel print
     };
 }

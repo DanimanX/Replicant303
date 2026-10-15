@@ -2,113 +2,238 @@
 
 namespace Replicant303
 {
-    const juce::Colour TranslucentGreenLookAndFeel::bgDeepGreen     = juce::Colour(0xff081c0e);
-    const juce::Colour TranslucentGreenLookAndFeel::bgMidGreen      = juce::Colour(0xff113a1e);
-    const juce::Colour TranslucentGreenLookAndFeel::bgLightGreen    = juce::Colour(0xff1c592f);
-    const juce::Colour TranslucentGreenLookAndFeel::neonGreen       = juce::Colour(0xff00ff66);
-    const juce::Colour TranslucentGreenLookAndFeel::neonRed         = juce::Colour(0xffff283b);
-    const juce::Colour TranslucentGreenLookAndFeel::knobMetalBright = juce::Colour(0xffdbe0d7);
-    const juce::Colour TranslucentGreenLookAndFeel::knobMetalDark   = juce::Colour(0xff2b332c);
-    const juce::Colour TranslucentGreenLookAndFeel::textSilver      = juce::Colour(0xffd3e3cd);
-    const juce::Colour TranslucentGreenLookAndFeel::borderOutline   = juce::Colour(0xff26733e);
+    // Color Palette sampled directly from Behringer TD-3-TG (Vibrant lime-emerald acrylic)
+    const juce::Colour TranslucentGreenLookAndFeel::acrylicGreen       = juce::Colour(0xff1ec836);
+    const juce::Colour TranslucentGreenLookAndFeel::acrylicHighlight   = juce::Colour(0xff6ef979);
+    const juce::Colour TranslucentGreenLookAndFeel::pcbDarkGreen       = juce::Colour(0xff0a3313);
+    const juce::Colour TranslucentGreenLookAndFeel::pcbTraceGreen      = juce::Colour(0xff2cc246);
+    const juce::Colour TranslucentGreenLookAndFeel::moldBossGreen      = juce::Colour(0xff42ea56);
+    const juce::Colour TranslucentGreenLookAndFeel::ledBrightRed       = juce::Colour(0xffff2028);
+    const juce::Colour TranslucentGreenLookAndFeel::ledDarkRed         = juce::Colour(0xff4a080c);
+    const juce::Colour TranslucentGreenLookAndFeel::spunAluminumBright = juce::Colour(0xfff0f4f2);
+    const juce::Colour TranslucentGreenLookAndFeel::spunAluminumDark   = juce::Colour(0xff7c857e);
+    const juce::Colour TranslucentGreenLookAndFeel::knobRibColor       = juce::Colour(0xff222723);
+    const juce::Colour TranslucentGreenLookAndFeel::silkscreenWhite    = juce::Colour(0xffffffff);
 
     TranslucentGreenLookAndFeel::TranslucentGreenLookAndFeel()
     {
-        setColour(juce::ResizableWindow::backgroundColourId, bgDeepGreen);
-        setColour(juce::Label::textColourId, textSilver);
-        setColour(juce::ComboBox::backgroundColourId, bgDeepGreen.withAlpha(0.85f));
-        setColour(juce::ComboBox::textColourId, textSilver);
-        setColour(juce::ComboBox::outlineColourId, borderOutline);
-        setColour(juce::ComboBox::arrowColourId, neonGreen);
-        setColour(juce::PopupMenu::backgroundColourId, bgDeepGreen.withAlpha(0.95f));
-        setColour(juce::PopupMenu::textColourId, textSilver);
-        setColour(juce::PopupMenu::highlightedBackgroundColourId, bgLightGreen);
-        setColour(juce::PopupMenu::highlightedTextColourId, neonGreen);
+        setColour(juce::ResizableWindow::backgroundColourId, acrylicGreen);
+        setColour(juce::Label::textColourId, silkscreenWhite);
+        setColour(juce::ComboBox::backgroundColourId, pcbDarkGreen.withAlpha(0.92f));
+        setColour(juce::ComboBox::textColourId, silkscreenWhite);
+        setColour(juce::ComboBox::outlineColourId, silkscreenWhite.withAlpha(0.85f));
+        setColour(juce::ComboBox::arrowColourId, silkscreenWhite);
+        setColour(juce::PopupMenu::backgroundColourId, pcbDarkGreen.withAlpha(0.96f));
+        setColour(juce::PopupMenu::textColourId, silkscreenWhite);
+        setColour(juce::PopupMenu::highlightedBackgroundColourId, acrylicGreen.darker(0.3f));
+        setColour(juce::PopupMenu::highlightedTextColourId, juce::Colours::white);
+    }
+
+    void TranslucentGreenLookAndFeel::drawKnobTicks(juce::Graphics& g, float centerX, float centerY, float radius,
+                                                    float startAngle, float endAngle, int numTicks)
+    {
+        g.setColour(silkscreenWhite.withAlpha(0.90f));
+        for (int i = 0; i < numTicks; ++i)
+        {
+            float norm = (numTicks > 1) ? (float)i / (float)(numTicks - 1) : 0.0f;
+            float angle = startAngle + norm * (endAngle - startAngle);
+            
+            float rInner = radius + 2.0f;
+            float rOuter = radius + ((i == 0 || i == numTicks - 1 || i == numTicks / 2) ? 6.5f : 4.5f);
+            float thickness = ((i == 0 || i == numTicks - 1 || i == numTicks / 2) ? 1.6f : 1.1f);
+
+            float cosA = std::cos(angle - juce::MathConstants<float>::halfPi);
+            float sinA = std::sin(angle - juce::MathConstants<float>::halfPi);
+
+            g.drawLine(centerX + rInner * cosA, centerY + rInner * sinA,
+                       centerX + rOuter * cosA, centerY + rOuter * sinA, thickness);
+        }
+    }
+
+    void TranslucentGreenLookAndFeel::drawJackSocket(juce::Graphics& g, float centerX, float centerY, float diameter, const juce::String& label)
+    {
+        auto rect = juce::Rectangle<float>(centerX - diameter * 0.5f, centerY - diameter * 0.5f, diameter, diameter);
+
+        // Mold boss underneath jack
+        g.setColour(moldBossGreen.withAlpha(0.35f));
+        g.fillEllipse(rect.expanded(7.0f));
+        g.setColour(moldBossGreen.withAlpha(0.60f));
+        g.drawEllipse(rect.expanded(7.0f), 1.2f);
+
+        // Drop shadow
+        g.setColour(juce::Colours::black.withAlpha(0.55f));
+        g.fillEllipse(rect.translated(0.0f, 2.0f));
+
+        // Chrome hex nut
+        g.setColour(juce::Colour(0xffc2c8c4));
+        juce::Path hex;
+        for (int i = 0; i < 6; ++i)
+        {
+            float a = i * (juce::MathConstants<float>::twoPi / 6.0f);
+            float hx = centerX + (diameter * 0.54f) * std::cos(a);
+            float hy = centerY + (diameter * 0.54f) * std::sin(a);
+            if (i == 0) hex.startNewSubPath(hx, hy);
+            else hex.lineTo(hx, hy);
+        }
+        hex.closeSubPath();
+        g.fillPath(hex);
+        g.setColour(juce::Colour(0xff454d47));
+        g.strokePath(hex, juce::PathStrokeType(1.1f));
+
+        // Jack barrel bevel
+        g.setColour(juce::Colour(0xffeef2ef));
+        g.drawEllipse(rect.reduced(2.0f), 1.2f);
+
+        // Center jack hole
+        g.setColour(juce::Colours::black);
+        g.fillEllipse(rect.reduced(diameter * 0.30f));
+
+        // Inside contact reflection
+        g.setColour(juce::Colours::silver);
+        g.fillEllipse(rect.reduced(diameter * 0.42f).translated(-0.5f, -0.5f));
+
+        // Little arrow indicator (▼ for inputs, ▲ for outputs)
+        bool isInput = label.contains("IN");
+        float arrowY = centerY - diameter * 0.5f - 8.0f;
+        g.setColour(silkscreenWhite);
+        juce::Path arr;
+        if (isInput)
+        {
+            arr.addTriangle(centerX - 3.5f, arrowY, centerX + 3.5f, arrowY, centerX, arrowY + 4.5f);
+        }
+        else
+        {
+            arr.addTriangle(centerX - 3.5f, arrowY + 4.5f, centerX + 3.5f, arrowY + 4.5f, centerX, arrowY);
+        }
+        g.fillPath(arr);
+
+        // Label above/below
+        if (label.isNotEmpty())
+        {
+            g.setColour(silkscreenWhite);
+            g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+            g.drawText(label, (int)(centerX - 32.0f), (int)(centerY + diameter * 0.5f + 3.0f), 64, 12, juce::Justification::centred);
+        }
+    }
+
+    void TranslucentGreenLookAndFeel::drawSlideSwitch(juce::Graphics& g, const juce::Rectangle<float>& bounds,
+                                                      bool isOn, const juce::String& labelLeft, const juce::String& labelRight)
+    {
+        // Recessed slot
+        g.setColour(juce::Colours::black.withAlpha(0.70f));
+        g.fillRoundedRectangle(bounds, 3.0f);
+        g.setColour(silkscreenWhite.withAlpha(0.65f));
+        g.drawRoundedRectangle(bounds, 3.0f, 1.0f);
+
+        // Slide handle
+        float handleW = bounds.getWidth() * 0.45f;
+        float handleH = bounds.getHeight() + 4.0f;
+        float handleX = isOn ? (bounds.getRight() - handleW - 1.0f) : (bounds.getX() + 1.0f);
+        float handleY = bounds.getY() - 2.0f;
+        auto handleRect = juce::Rectangle<float>(handleX, handleY, handleW, handleH);
+
+        // Handle shadow
+        g.setColour(juce::Colours::black.withAlpha(0.55f));
+        g.fillRoundedRectangle(handleRect.translated(0.0f, 1.5f), 2.5f);
+
+        // Molded ribbed black handle
+        g.setColour(juce::Colour(0xff222522));
+        g.fillRoundedRectangle(handleRect, 2.0f);
+        
+        // Ribbed flutes on switch
+        g.setColour(juce::Colour(0xff444a45));
+        for (float rx = handleRect.getX() + 3.0f; rx < handleRect.getRight() - 2.0f; rx += 3.0f)
+            g.drawVerticalLine((int)rx, handleRect.getY() + 2.0f, handleRect.getBottom() - 2.0f);
+
+        // Pip highlight
+        g.setColour(juce::Colour(0xffdbe0dc));
+        g.fillEllipse(handleRect.getCentreX() - 1.5f, handleRect.getCentreY() - 1.5f, 3.0f, 3.0f);
+
+        // Labels
+        g.setColour(silkscreenWhite);
+        g.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+        if (labelLeft.isNotEmpty())
+            g.drawText(labelLeft, (int)(bounds.getX() - 34.0f), (int)(bounds.getY() - 2.0f), 30, (int)(bounds.getHeight() + 4.0f), juce::Justification::centredRight);
+        if (labelRight.isNotEmpty())
+            g.drawText(labelRight, (int)(bounds.getRight() + 4.0f), (int)(bounds.getY() - 2.0f), 30, (int)(bounds.getHeight() + 4.0f), juce::Justification::centredLeft);
     }
 
     void TranslucentGreenLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
                                                        float sliderPosProportional, float rotaryStartAngle,
                                                        float rotaryEndAngle, juce::Slider& /*slider*/)
     {
-        auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat().reduced(4.0f);
+        auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat().reduced(2.0f);
         auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) / 2.0f;
         auto center = bounds.getCentre();
         auto toAngle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
 
-        // 1. Arc track background (dark acrylic groove)
-        auto arcRadius = radius - 2.0f;
-        juce::Path trackPath;
-        trackPath.addCentredArc(center.x, center.y, arcRadius, arcRadius, 0.0f, rotaryStartAngle, rotaryEndAngle, true);
-        g.setColour(juce::Colours::black.withAlpha(0.6f));
-        g.strokePath(trackPath, juce::PathStrokeType(3.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        // 1. Internal translucent mold boss (plastic standoff under knob)
+        g.setColour(moldBossGreen.withAlpha(0.30f));
+        g.fillEllipse(center.x - radius, center.y - radius, radius * 2.0f, radius * 2.0f);
+        g.setColour(moldBossGreen.withAlpha(0.50f));
+        g.drawEllipse(center.x - radius * 0.95f, center.y - radius * 0.95f, radius * 1.9f, radius * 1.9f, 1.2f);
+        g.drawEllipse(center.x - radius * 0.70f, center.y - radius * 0.70f, radius * 1.4f, radius * 1.4f, 1.0f);
 
-        // 2. Active illuminated neon value arc
-        if (sliderPosProportional > 0.001f)
-        {
-            juce::Path valuePath;
-            valuePath.addCentredArc(center.x, center.y, arcRadius, arcRadius, 0.0f, rotaryStartAngle, toAngle, true);
-            g.setColour(neonGreen.withAlpha(0.85f));
-            g.strokePath(valuePath, juce::PathStrokeType(3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        }
+        // 2. Knob Outer Skirt (Fluted cylindrical body)
+        float knobRadius = radius * 0.76f;
+        auto knobRect = juce::Rectangle<float>(center.x - knobRadius, center.y - knobRadius, knobRadius * 2.0f, knobRadius * 2.0f);
 
-        // 3. Knob Outer Metallic Knurled Rim
-        auto knobRadius = radius - 8.0f;
-        auto knobBounds = juce::Rectangle<float>(center.x - knobRadius, center.y - knobRadius,
-                                                knobRadius * 2.0f, knobRadius * 2.0f);
+        // 3. Printed radial tick marks framing the knob
+        drawKnobTicks(g, center.x, center.y, knobRadius + 1.0f, rotaryStartAngle, rotaryEndAngle, 11);
 
-        // Shadow behind knob
-        g.setColour(juce::Colours::black.withAlpha(0.55f));
-        g.fillEllipse(knobBounds.translated(0.0f, 2.5f));
+        // Cast shadow onto translucent chassis
+        g.setColour(juce::Colours::black.withAlpha(0.60f));
+        g.fillEllipse(knobRect.translated(0.0f, 3.5f));
 
-        // Metallic bevel gradient
-        juce::ColourGradient rimGrad(knobMetalBright, knobBounds.getX(), knobBounds.getY(),
-                                     knobMetalDark, knobBounds.getRight(), knobBounds.getBottom(), true);
-        g.setGradientFill(rimGrad);
-        g.fillEllipse(knobBounds);
+        // Ribbed dark plastic body
+        g.setColour(knobRibColor);
+        g.fillEllipse(knobRect);
 
-        // Subtle knurling ribs (303 flutes)
-        g.setColour(juce::Colours::black.withAlpha(0.35f));
+        // Fluted serrations around skirt (18 flutes)
+        g.setColour(juce::Colour(0xff161a17));
         for (int i = 0; i < 18; ++i)
         {
-            float angle = i * (juce::MathConstants<float>::twoPi / 18.0f);
-            float rInner = knobRadius * 0.78f;
-            float rOuter = knobRadius * 0.98f;
-            float x1 = center.x + rInner * std::cos(angle);
-            float y1 = center.y + rInner * std::sin(angle);
-            float x2 = center.x + rOuter * std::cos(angle);
-            float y2 = center.y + rOuter * std::sin(angle);
-            g.drawLine(x1, y1, x2, y2, 1.2f);
+            float a = i * (juce::MathConstants<float>::twoPi / 18.0f);
+            float rIn = knobRadius * 0.78f;
+            float rOut = knobRadius * 0.98f;
+            g.drawLine(center.x + rIn * std::cos(a), center.y + rIn * std::sin(a),
+                       center.x + rOut * std::cos(a), center.y + rOut * std::sin(a), 1.5f);
         }
 
-        // 4. Knob Center Cap (Brushed dark metal with inner bevel)
-        auto capRadius = knobRadius * 0.72f;
-        auto capBounds = juce::Rectangle<float>(center.x - capRadius, center.y - capRadius,
-                                               capRadius * 2.0f, capRadius * 2.0f);
+        // 4. Conical Spun Aluminum Metallic Cap
+        float capRadius = knobRadius * 0.76f;
+        auto capRect = juce::Rectangle<float>(center.x - capRadius, center.y - capRadius, capRadius * 2.0f, capRadius * 2.0f);
 
-        juce::ColourGradient capGrad(knobMetalDark.brighter(0.2f), center.x, center.y - capRadius,
-                                     knobMetalDark.darker(0.6f), center.x, center.y + capRadius, false);
+        // Outer beveled ring of the aluminum cap
+        g.setColour(spunAluminumDark);
+        g.fillEllipse(capRect);
+
+        // Spun brushed aluminum gradient reflection
+        juce::ColourGradient capGrad(
+            spunAluminumBright, center.x - capRadius * 0.35f, center.y - capRadius * 0.5f,
+            spunAluminumDark, center.x + capRadius * 0.5f, center.y + capRadius * 0.6f, false);
         g.setGradientFill(capGrad);
-        g.fillEllipse(capBounds);
+        g.fillEllipse(capRect.reduced(1.2f));
 
-        // Thin metallic edge ring around cap
-        g.setColour(knobMetalBright.withAlpha(0.6f));
-        g.drawEllipse(capBounds, 1.0f);
+        // Subtle concentric spun lathe rings
+        g.setColour(juce::Colours::white.withAlpha(0.40f));
+        g.drawEllipse(capRect.reduced(capRadius * 0.35f), 0.8f);
+        g.setColour(juce::Colours::black.withAlpha(0.18f));
+        g.drawEllipse(capRect.reduced(capRadius * 0.60f), 0.8f);
 
-        // 5. Fluorescent Neon Indicator Needle / Pointer
-        auto pointerLength = knobRadius * 0.85f;
-        auto pointerThickness = 2.8f;
+        // 5. Crisp Pointer Line (Black indicator line on the silver cap)
+        float pointerLength = capRadius * 0.88f;
+        float cosP = std::sin(toAngle);
+        float sinP = -std::cos(toAngle);
 
-        juce::Path p;
-        p.addRoundedRectangle(-pointerThickness * 0.5f, -pointerLength, pointerThickness, pointerLength * 0.55f, 1.2f);
-        p.applyTransform(juce::AffineTransform::rotation(toAngle).translated(center.x, center.y));
+        // Sharp black pointer
+        g.setColour(juce::Colour(0xff111412));
+        g.drawLine(center.x, center.y, center.x + pointerLength * cosP, center.y + pointerLength * sinP, 2.5f);
 
-        // Pointer glow
-        g.setColour(neonGreen.withAlpha(0.4f));
-        g.strokePath(p, juce::PathStrokeType(4.0f));
-
-        // Pointer body
-        g.setColour(neonGreen);
-        g.fillPath(p);
+        // Tip highlight
+        g.setColour(juce::Colours::white.withAlpha(0.7f));
+        g.drawLine(center.x + pointerLength * 0.65f * cosP, center.y + pointerLength * 0.65f * sinP,
+                   center.x + pointerLength * cosP, center.y + pointerLength * sinP, 1.2f);
     }
 
     void TranslucentGreenLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& button,
@@ -117,43 +242,59 @@ namespace Replicant303
         auto bounds = button.getLocalBounds().toFloat().reduced(2.0f);
         bool isToggled = button.getToggleState();
 
-        // Button background (Tactile 303 switch)
-        auto btnArea = bounds.removeFromLeft(bounds.getHeight()).reduced(3.0f);
-        
+        // Tactile rectangular switch button (like TD-3 sequencer buttons)
+        auto btnArea = bounds.removeFromLeft(bounds.getHeight() * 1.1f).reduced(2.0f);
+
+        // Drop shadow
+        g.setColour(juce::Colours::black.withAlpha(0.5f));
+        g.fillRoundedRectangle(btnArea.translated(0.0f, 2.0f), 3.0f);
+
+        // Tactile button body (Light metallic grey or dark depending on state)
+        juce::Colour btnTop = isToggled ? juce::Colour(0xffdbe2dd) : juce::Colour(0xff8a948d);
+        juce::Colour btnBottom = isToggled ? juce::Colour(0xff9aa29c) : juce::Colour(0xff4a524c);
+        if (shouldDrawButtonAsHighlighted) btnTop = btnTop.brighter(0.15f);
+        if (shouldDrawButtonAsDown) btnTop = btnTop.darker(0.2f);
+
+        juce::ColourGradient btnGrad(btnTop, btnArea.getX(), btnArea.getY(), btnBottom, btnArea.getX(), btnArea.getBottom(), false);
+        g.setGradientFill(btnGrad);
+        g.fillRoundedRectangle(btnArea, 2.5f);
+
         g.setColour(juce::Colours::black.withAlpha(0.6f));
-        g.fillRoundedRectangle(btnArea.translated(0.0f, 1.5f), 3.0f);
+        g.drawRoundedRectangle(btnArea, 2.5f, 1.0f);
 
-        juce::Colour btnColour = isToggled ? bgLightGreen.brighter(0.3f) : bgMidGreen.darker(0.3f);
-        if (shouldDrawButtonAsHighlighted)
-            btnColour = btnColour.brighter(0.2f);
-        if (shouldDrawButtonAsDown)
-            btnColour = btnColour.darker(0.2f);
+        // Circular Red LED on button
+        auto ledArea = juce::Rectangle<float>(btnArea.getCentreX() - 4.0f, btnArea.getY() + 3.5f, 8.0f, 8.0f);
+        
+        // LED Chrome bezel
+        g.setColour(juce::Colour(0xff6a726c));
+        g.drawEllipse(ledArea.expanded(1.0f), 1.0f);
 
-        g.setColour(btnColour);
-        g.fillRoundedRectangle(btnArea, 3.0f);
-
-        g.setColour(isToggled ? neonGreen : borderOutline);
-        g.drawRoundedRectangle(btnArea, 3.0f, 1.2f);
-
-        // LED center indicator
-        auto ledArea = btnArea.reduced(btnArea.getWidth() * 0.28f);
         if (isToggled)
         {
-            // Glowing neon LED
-            g.setColour(neonGreen.withAlpha(0.45f));
-            g.fillEllipse(ledArea.expanded(2.0f));
-            g.setColour(neonGreen);
+            // Glowing red bloom
+            g.setColour(ledBrightRed.withAlpha(0.40f));
+            g.fillEllipse(ledArea.expanded(4.0f));
+
+            // Core lit LED
+            g.setColour(ledBrightRed);
             g.fillEllipse(ledArea);
+
+            // Specular highlight on dome
+            g.setColour(juce::Colours::white.withAlpha(0.85f));
+            g.fillEllipse(ledArea.reduced(2.2f).translated(-0.8f, -0.8f));
         }
         else
         {
-            g.setColour(juce::Colours::black.withAlpha(0.5f));
+            // Unlit dark red LED
+            g.setColour(ledDarkRed);
             g.fillEllipse(ledArea);
+            g.setColour(juce::Colours::white.withAlpha(0.25f));
+            g.fillEllipse(ledArea.reduced(2.5f).translated(-0.8f, -0.8f));
         }
 
-        // Text label
-        g.setColour(isToggled ? neonGreen : textSilver);
-        g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+        // Button label
+        g.setColour(silkscreenWhite);
+        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
         g.drawText(button.getButtonText(), bounds.reduced(6.0f, 0.0f), juce::Justification::centredLeft);
     }
 
@@ -163,21 +304,21 @@ namespace Replicant303
     {
         auto bounds = juce::Rectangle<float>(0, 0, (float)width, (float)height).reduced(1.0f);
 
-        // Acrylic translucent container
-        g.setColour(bgDeepGreen.withAlpha(0.85f));
-        g.fillRoundedRectangle(bounds, 4.0f);
+        // Translucent container
+        g.setColour(pcbDarkGreen.withAlpha(0.85f));
+        g.fillRoundedRectangle(bounds, 3.0f);
 
-        g.setColour(borderOutline);
-        g.drawRoundedRectangle(bounds, 4.0f, 1.2f);
+        g.setColour(silkscreenWhite.withAlpha(0.75f));
+        g.drawRoundedRectangle(bounds, 3.0f, 1.2f);
 
-        // Arrow icon in neon green
-        auto arrowArea = bounds.removeFromRight(24.0f).reduced(7.0f);
+        // Arrow icon
+        auto arrowArea = bounds.removeFromRight(20.0f).reduced(6.0f);
         juce::Path arrow;
         arrow.addTriangle(arrowArea.getX(), arrowArea.getY() + arrowArea.getHeight() * 0.35f,
                           arrowArea.getRight(), arrowArea.getY() + arrowArea.getHeight() * 0.35f,
                           arrowArea.getCentreX(), arrowArea.getBottom() - arrowArea.getHeight() * 0.25f);
 
-        g.setColour(box.isEnabled() ? neonGreen : borderOutline);
+        g.setColour(box.isEnabled() ? silkscreenWhite : silkscreenWhite.withAlpha(0.4f));
         g.fillPath(arrow);
     }
 
@@ -189,18 +330,18 @@ namespace Replicant303
     {
         if (isSeparator)
         {
-            g.setColour(borderOutline.withAlpha(0.5f));
+            g.setColour(silkscreenWhite.withAlpha(0.3f));
             g.fillRect(area.reduced(4, 0).withHeight(1));
             return;
         }
 
         if (isHighlighted && isActive)
         {
-            g.setColour(bgLightGreen);
+            g.setColour(acrylicGreen.darker(0.2f));
             g.fillRect(area);
         }
 
-        g.setColour(isHighlighted ? neonGreen : textSilver);
+        g.setColour(isHighlighted ? juce::Colours::white : silkscreenWhite);
         g.setFont(juce::FontOptions(13.0f, juce::Font::plain));
 
         auto textBounds = area.reduced(10, 0);
@@ -208,7 +349,7 @@ namespace Replicant303
 
         if (isTicked)
         {
-            g.setColour(neonGreen);
+            g.setColour(ledBrightRed);
             auto itemArea = area;
             g.fillEllipse(itemArea.removeFromRight(20).reduced(6).toFloat());
         }
