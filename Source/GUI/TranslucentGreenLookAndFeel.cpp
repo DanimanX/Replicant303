@@ -209,7 +209,8 @@ namespace Replicant303
         if (isTicked)
         {
             g.setColour(neonGreen);
-            g.fillEllipse(area.removeFromRight(20).reduced(6).toFloat());
+            auto itemArea = area;
+            g.fillEllipse(itemArea.removeFromRight(20).reduced(6).toFloat());
         }
     }
 }
