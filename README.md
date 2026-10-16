@@ -112,6 +112,23 @@ Automated multi-platform builds run via `.github/workflows/build.yml` on every p
 
 ---
 
+## ☕ Support
+
+Replicant303 is free and open source. If it earns a place in your setup and you
+feel like saying thanks, you can buy me a coffee — completely optional.
+
+<p align="center">
+  <a href="https://paypal.me/DanimanX?locale.x=en_US&amp;country.x=CL">
+    <img src="https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&amp;logoColor=white&amp;style=for-the-badge" alt="Donate with PayPal">
+  </a>
+</p>
+
+<p align="center">
+  <sub><a href="https://paypal.me/DanimanX?locale.x=en_US&amp;country.x=CL">paypal.me/DanimanX</a></sub>
+</p>
+
+---
+
 ## 📄 License
 
 Created by **DanimanX Studio**. Distributed under the **MIT License**.
