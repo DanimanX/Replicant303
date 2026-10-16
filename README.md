@@ -1,21 +1,28 @@
 # REPLICANT 303 // Virtual Analog TB-303 Synthesizer
 
 <p align="center">
-  <strong>Virtual Analog TB-303 Emulation with Behringer TD-3 Translucent Green Skin & Multi-Distortion Engine</strong><br>
+  <strong>Virtual Analog TB-303 Emulation with Translucent Green &amp; Obsidian Red Panel Skins and a Multi-Distortion Engine</strong><br>
   <em>Audio Plugin: VST3 • AU • Standalone for macOS, Windows, and Linux</em>
 </p>
 
 <p align="center">
-  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 UI - Behringer TD-3 Translucent Green Skin with 80s Digital LED Tempo Clock" width="950">
+  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 UI in both skins: Behringer TD-3 Translucent Green and Obsidian Red, each with an 80s red digital LED tempo clock and a skin selector in the header" width="950">
+</p>
+
+<p align="center">
+  <em>Both ship in the plugin — pick a skin from the selector in the header.</em>
 </p>
 
 ---
 
 ## 🎛️ Overview
 
-**Replicant303** is an authentic virtual analog emulation of the iconic **Roland TB-303**, featuring a procedural 3D interface inspired by the **Behringer TD-3 Translucent Green** edition.
+**Replicant303** is an authentic virtual analog emulation of the iconic **Roland TB-303**, featuring a procedural 3D interface whose tactile hardware — PCB underlay, translucent acrylic chassis, metal knobs, tactile keys and 80s LED clock — is drawn entirely in code.
 
-The panel ships with two selectable skins - the original **TD-3 Green** and **Obsidian Red** (black acrylic with red silkscreen) - chosen from the selector in the header and saved with the plugin state.
+The panel ships with two selectable skins, chosen from the selector in the header and saved with the plugin state:
+
+* **TD-3 Green** — inspired by the **Behringer TD-3 Translucent Green** edition.
+* **Obsidian Red** — black acrylic panel with red silkscreen lettering, copper traces and knob pointers.
 
 It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive dual envelopes, capacitor-modeled slide, and squelch accent) with an integrated **5-model distortion unit** led by the legendary **ProCo Rat ("Poco Rat")** pedal.
 
@@ -23,10 +30,10 @@ It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive 
 
 ## ✨ Key Features
 
-### 🎨 3D Translucent Green Interface
+### 🎨 Procedural 3D Interface with Selectable Skins
 * **Selectable Skins:** every colour of the panel (acrylic chassis, PCB underlay, silkscreen print, LEDs, 7-segment display, knob metal and tactile keys) comes from a theme table, so new skins are data rather than code. `TD-3 Green` and `Obsidian Red` ship today, selectable from the header and persisted in the plugin state.
 * **Procedural 3D PCB Underlay:** Visible circuit board with BA662 VCA, LM308N Op-Amp, AN6562 filter buffer, D8048C CPU, electrolytic capacitors, resistors, and copper traces.
-* **Translucent Emerald Acrylic:** Mold standoff bosses under every knob and jack, beveled 3D borders, and embossed `REPLICANT - 303` bottom lip.
+* **Translucent Acrylic:** Mold standoff bosses under every knob and jack, beveled 3D borders, and embossed `REPLICANT - 303` bottom lip.
 * **80s Digital LED Tempo Display:** Vintage red 7-segment clock display on deep black recessed acrylic, updating BPM in real time.
 * **11 Spun-Aluminum Knobs:** Conical brushed metallic caps, fluted dark skirts, and radial tick markings.
 * **13-Key Tactile Keyboard:** Playable via mouse or MIDI, with 13 individual real-time red LEDs.
@@ -80,6 +87,18 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
 # 3. Build VST3, AU, and Standalone
 ninja -C build
+```
+
+### Refreshing the panel screenshots
+
+`generate_snapshot` renders the editor off-screen to a PNG, so the README previews can be
+regenerated without opening a DAW. It takes an output path and an optional skin index, and
+switches the skin live through the public `ui_theme` parameter before rendering:
+
+```bash
+ninja -C build generate_snapshot
+generate_snapshot assets/replicant303_ui.png 0                          # TD-3 Green
+generate_snapshot assets/replicant303_ui_obsidian_red.png 1             # Obsidian Red
 ```
 
 ---
