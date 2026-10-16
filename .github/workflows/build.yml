@@ -140,30 +140,58 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
+    # Serialise release runs for the same ref. Two pushes landing close together
+    # otherwise compute the same next version concurrently and race for one tag.
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Determine Next Release Version
+      - name: Determine Release Version
         id: versioning
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            RELEASE_TAG="${{ github.ref_name }}"
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # Tag push: the version was chosen deliberately, use it as-is.
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+            echo "Triggered by tag push -> releasing ${RELEASE_TAG}"
           else
-            git fetch --tags --force || true
-            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+            git fetch --tags --force
+
+            # Highest existing version tag, compared as a version.
+            #
+            # Do NOT use `git describe --tags --abbrev=0` here. When several tags
+            # point at the same commit it breaks the tie by repository order, not
+            # by version. With v1.0.4 and v1.0.5 both on one commit it returns
+            # v1.0.4, so the next version was computed as v1.0.5 again and
+            # softprops/action-gh-release silently rewrote that already published
+            # release instead of creating a new one.
+            LATEST_TAG=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+            LATEST_TAG=${LATEST_TAG:-v1.0.0}
+            echo "Highest existing version tag: ${LATEST_TAG}"
+
             VERSION="${LATEST_TAG#v}"
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-            MAJOR=${MAJOR:-1}
-            MINOR=${MINOR:-0}
-            PATCH=${PATCH:-0}
-            PATCH=$((PATCH + 1))
-            RELEASE_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${VERSION}"
+            # 10# forces decimal: a tag like v1.0.08 would otherwise be read as an
+            # invalid octal literal by bash arithmetic and abort the step.
+            RELEASE_TAG="v${MAJOR}.${MINOR}.$((10#${PATCH} + 1))"
+
+            # Guard: never write over a release that already exists. Without this
+            # the job used to exit 0 while quietly replacing the assets of an
+            # older, already published release.
+            if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+              echo "::error::Tag ${RELEASE_TAG} already exists. Refusing to overwrite the published release for it. Bump the version deliberately or delete the stale tag."
+              exit 1
+            fi
           fi
-          echo "tag=${RELEASE_TAG}" >> $GITHUB_OUTPUT
-          echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_ENV
+
+          echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> "${GITHUB_ENV}"
           echo "Release tag will be: ${RELEASE_TAG}"
 
       - name: Download all Build Artifacts
@@ -184,19 +212,22 @@ jobs:
           name: "Replicant303 ${{ steps.versioning.outputs.tag }} - Multiplatform Release"
           body: |
             ## 🎛️ Replicant303 - Virtual Analog TB-303 Synthesizer (${{ steps.versioning.outputs.tag }})
-            **Translucent Green Edition (Behringer TD-3 Skin) with Enhanced Multi-Distortion (PocoRat)**
+            **Selectable panel skins (Translucent Green / Obsidian Red) with a 5-model distortion engine**
 
-            ### 📦 Binarios Listos para Usar:
-            * **macOS Universal:** `Replicant303-macOS-Universal.zip` (VST3, AU `.component` y Standalone compatible con Apple Silicon M1/M2/M3/M4 e Intel)
-            * **Linux x86_64:** `Replicant303-Linux-x86_64.zip` (VST3 y ejecutable Standalone para Ubuntu, Debian, Arch, Fedora)
-            * **Windows x64:** `Replicant303-Windows-x64.zip` (VST3 y Standalone `.exe` para Windows 10 y 11)
+            ### 📦 Ready-to-use binaries
+            * **macOS Universal:** `Replicant303-macOS-Universal.zip` (VST3, AU `.component` and Standalone, for Apple Silicon M1/M2/M3/M4 and Intel)
+            * **Linux x86_64:** `Replicant303-Linux-x86_64.zip` (VST3 and Standalone for Ubuntu, Debian, Arch, Fedora)
+            * **Windows x64:** `Replicant303-Windows-x64.zip` (VST3 and Standalone `.exe` for Windows 10 and 11)
 
-            ### 🚀 Características:
-            * Replicación analógica virtual completa: Sawtooth exponencial y Square con droop RC nasal.
-            * Filtro Diode Ladder de 4 polos con saturación $\tanh$, desacoplamiento AC y auto-oscilación.
-            * Envolventes gemelas interactivas con acortamiento por Acento y Slide continuo legato (~60ms).
-            * **Motor de Distorsión Mejorado:** PocoRat (ProCo Rat con filtro inverso), TubeDrive, HardClip, Germanium Fuzz y Acid Wavefolder.
-            * Skin Behringer TD-3 verde translúcido con LEDs reactivos de Slide y Accent.
+            ### 🎨 Interface
+            * Fully procedural 3D front panel: PCB underlay, translucent acrylic chassis, metal knobs, 13-key tactile keyboard and an 80s 7-segment LED tempo clock.
+            * **Selectable skins:** Translucent Green (Behringer TD-3) and Obsidian Red (black acrylic, red silkscreen). Choose one from the header selector; the choice is saved with the plugin state.
+
+            ### 🚀 Engine
+            * Complete virtual analog voice: exponential sawtooth and RC-drooped square wave.
+            * 4-pole diode ladder filter with $\tanh$ saturation, AC decoupling and self-oscillation.
+            * Interactive twin envelopes with accent shortening and continuous legato slide (~60 ms).
+            * **5-model distortion engine:** PocoRat (ProCo Rat with reverse tone filter), TubeDrive, HardClip, Germanium Fuzz and Acid Wavefolder.
           draft: false
           prerelease: false
           files: release-assets/*.zip
