@@ -70,8 +70,10 @@ target_sources(Replicant303 PRIVATE
     Source/DSP/SynthEngine.cpp
 
     # GUI Look & Feel
-    Source/GUI/TranslucentGreenLookAndFeel.h
-    Source/GUI/TranslucentGreenLookAndFeel.cpp
+    Source/GUI/Replicant303LookAndFeel.h
+    Source/GUI/Replicant303LookAndFeel.cpp
+    Source/GUI/Replicant303Theme.h
+    Source/GUI/Replicant303Theme.cpp
 )
 
 # ------------------------------------------------------------------------------
@@ -110,9 +112,15 @@ add_executable(generate_snapshot EXCLUDE_FROM_ALL
     Source/DSP/DiodeLadderFilter.cpp
     Source/DSP/DistortionUnit.cpp
     Source/DSP/SynthEngine.cpp
-    Source/GUI/TranslucentGreenLookAndFeel.cpp
+    Source/GUI/Replicant303LookAndFeel.cpp
+    Source/GUI/Replicant303Theme.cpp
 )
 target_include_directories(generate_snapshot PRIVATE Source Source/DSP Source/GUI)
+target_compile_definitions(generate_snapshot PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_MODAL_LOOPS_PERMITTED=1   # lets the tool pump the queue after a live skin switch
+)
 target_link_libraries(generate_snapshot PRIVATE
     juce::juce_audio_utils
     juce::juce_audio_processors

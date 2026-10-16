@@ -1,38 +1,47 @@
-#include "TranslucentGreenLookAndFeel.h"
+#include "Replicant303LookAndFeel.h"
 
 namespace Replicant303
 {
-    // Color Palette sampled directly from Behringer TD-3-TG (Vibrant lime-emerald acrylic)
-    const juce::Colour TranslucentGreenLookAndFeel::acrylicGreen       = juce::Colour(0xff1ec836);
-    const juce::Colour TranslucentGreenLookAndFeel::acrylicHighlight   = juce::Colour(0xff6ef979);
-    const juce::Colour TranslucentGreenLookAndFeel::pcbDarkGreen       = juce::Colour(0xff0a3313);
-    const juce::Colour TranslucentGreenLookAndFeel::pcbTraceGreen      = juce::Colour(0xff2cc246);
-    const juce::Colour TranslucentGreenLookAndFeel::moldBossGreen      = juce::Colour(0xff42ea56);
-    const juce::Colour TranslucentGreenLookAndFeel::ledBrightRed       = juce::Colour(0xffff2028);
-    const juce::Colour TranslucentGreenLookAndFeel::ledDarkRed         = juce::Colour(0xff4a080c);
-    const juce::Colour TranslucentGreenLookAndFeel::spunAluminumBright = juce::Colour(0xfff0f4f2);
-    const juce::Colour TranslucentGreenLookAndFeel::spunAluminumDark   = juce::Colour(0xff7c857e);
-    const juce::Colour TranslucentGreenLookAndFeel::knobRibColor       = juce::Colour(0xff222723);
-    const juce::Colour TranslucentGreenLookAndFeel::silkscreenWhite    = juce::Colour(0xffffffff);
-
-    TranslucentGreenLookAndFeel::TranslucentGreenLookAndFeel()
+    //==============================================================================
+    Replicant303LookAndFeel::Replicant303LookAndFeel()
     {
-        setColour(juce::ResizableWindow::backgroundColourId, acrylicGreen);
-        setColour(juce::Label::textColourId, silkscreenWhite);
-        setColour(juce::ComboBox::backgroundColourId, pcbDarkGreen.withAlpha(0.92f));
-        setColour(juce::ComboBox::textColourId, silkscreenWhite);
-        setColour(juce::ComboBox::outlineColourId, silkscreenWhite.withAlpha(0.85f));
-        setColour(juce::ComboBox::arrowColourId, silkscreenWhite);
-        setColour(juce::PopupMenu::backgroundColourId, pcbDarkGreen.withAlpha(0.96f));
-        setColour(juce::PopupMenu::textColourId, silkscreenWhite);
-        setColour(juce::PopupMenu::highlightedBackgroundColourId, acrylicGreen.darker(0.3f));
-        setColour(juce::PopupMenu::highlightedTextColourId, juce::Colours::white);
+        applyTheme();
     }
 
-    void TranslucentGreenLookAndFeel::drawKnobTicks(juce::Graphics& g, float centerX, float centerY, float radius,
-                                                    float startAngle, float endAngle, int numTicks)
+    void Replicant303LookAndFeel::applyTheme()
     {
-        g.setColour(silkscreenWhite.withAlpha(0.90f));
+        const auto& t = theme();
+
+        setColour(juce::ResizableWindow::backgroundColourId, t.chassisUp);
+
+        setColour(juce::Label::textColourId, t.silkscreen);
+
+        setColour(juce::ComboBox::backgroundColourId, t.pcbDark.withAlpha(0.92f));
+        setColour(juce::ComboBox::textColourId, t.silkscreen);
+        setColour(juce::ComboBox::outlineColourId, t.silkscreen.withAlpha(0.85f));
+        setColour(juce::ComboBox::arrowColourId, t.silkscreen);
+        setColour(juce::ComboBox::focusedOutlineColourId, t.ledBright);
+
+        setColour(juce::PopupMenu::backgroundColourId, t.pcbDark.withAlpha(0.96f));
+        setColour(juce::PopupMenu::textColourId, t.silkscreen);
+        setColour(juce::PopupMenu::highlightedBackgroundColourId, t.silkscreen.withAlpha(0.22f));
+        setColour(juce::PopupMenu::highlightedTextColourId, t.silkscreen);
+
+        setColour(juce::Slider::textBoxTextColourId, t.silkscreen);
+        setColour(juce::TextButton::textColourOffId, t.silkscreen);
+        setColour(juce::TextButton::textColourOnId, t.silkscreen);
+        setColour(juce::ToggleButton::textColourId, t.silkscreen);
+        setColour(juce::ToggleButton::tickColourId, t.ledBright);
+        setColour(juce::TooltipWindow::backgroundColourId, t.pcbDark);
+        setColour(juce::TooltipWindow::textColourId, t.silkscreen);
+        setColour(juce::TooltipWindow::outlineColourId, t.silkscreen.withAlpha(0.6f));
+    }
+
+    //==============================================================================
+    void Replicant303LookAndFeel::drawKnobTicks(juce::Graphics& g, float centerX, float centerY, float radius,
+                                                float startAngle, float endAngle, int numTicks)
+    {
+        g.setColour(theme().silkscreen.withAlpha(0.90f));
         for (int i = 0; i < numTicks; ++i)
         {
             float norm = (numTicks > 1) ? (float)i / (float)(numTicks - 1) : 0.0f;
@@ -50,14 +59,15 @@ namespace Replicant303
         }
     }
 
-    void TranslucentGreenLookAndFeel::drawJackSocket(juce::Graphics& g, float centerX, float centerY, float diameter, const juce::String& label)
+    void Replicant303LookAndFeel::drawJackSocket(juce::Graphics& g, float centerX, float centerY, float diameter, const juce::String& label)
     {
+        const auto& t = theme();
         auto rect = juce::Rectangle<float>(centerX - diameter * 0.5f, centerY - diameter * 0.5f, diameter, diameter);
 
         // Mold boss underneath jack
-        g.setColour(moldBossGreen.withAlpha(0.35f));
+        g.setColour(t.moldBoss.withAlpha(0.35f));
         g.fillEllipse(rect.expanded(7.0f));
-        g.setColour(moldBossGreen.withAlpha(0.60f));
+        g.setColour(t.moldBoss.withAlpha(0.60f));
         g.drawEllipse(rect.expanded(7.0f), 1.2f);
 
         // Drop shadow
@@ -65,7 +75,7 @@ namespace Replicant303
         g.fillEllipse(rect.translated(0.0f, 2.0f));
 
         // Chrome hex nut
-        g.setColour(juce::Colour(0xffc2c8c4));
+        g.setColour(t.metalBright);
         juce::Path hex;
         for (int i = 0; i < 6; ++i)
         {
@@ -77,11 +87,11 @@ namespace Replicant303
         }
         hex.closeSubPath();
         g.fillPath(hex);
-        g.setColour(juce::Colour(0xff454d47));
+        g.setColour(t.metalEdge);
         g.strokePath(hex, juce::PathStrokeType(1.1f));
 
         // Jack barrel bevel
-        g.setColour(juce::Colour(0xffeef2ef));
+        g.setColour(t.metalBright.brighter(0.25f));
         g.drawEllipse(rect.reduced(2.0f), 1.2f);
 
         // Center jack hole
@@ -89,13 +99,13 @@ namespace Replicant303
         g.fillEllipse(rect.reduced(diameter * 0.30f));
 
         // Inside contact reflection
-        g.setColour(juce::Colours::silver);
+        g.setColour(t.metalBright);
         g.fillEllipse(rect.reduced(diameter * 0.42f).translated(-0.5f, -0.5f));
 
         // Little arrow indicator (▼ for inputs, ▲ for outputs)
         bool isInput = label.contains("IN");
         float arrowY = centerY - diameter * 0.5f - 8.0f;
-        g.setColour(silkscreenWhite);
+        g.setColour(t.silkscreen);
         juce::Path arr;
         if (isInput)
         {
@@ -110,19 +120,21 @@ namespace Replicant303
         // Label above/below
         if (label.isNotEmpty())
         {
-            g.setColour(silkscreenWhite);
-            g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
-            g.drawText(label, (int)(centerX - 32.0f), (int)(centerY + diameter * 0.5f + 3.0f), 64, 12, juce::Justification::centred);
+            g.setColour(t.silkscreen);
+            g.setFont(uiFont(8.5f, juce::Font::bold));
+            g.drawText(label, (int)(centerX - 32.0f), (int)(centerY + diameter * 0.5f + 3.0f), 64, 13, juce::Justification::centred);
         }
     }
 
-    void TranslucentGreenLookAndFeel::drawSlideSwitch(juce::Graphics& g, const juce::Rectangle<float>& bounds,
-                                                      bool isOn, const juce::String& labelLeft, const juce::String& labelRight)
+    void Replicant303LookAndFeel::drawSlideSwitch(juce::Graphics& g, const juce::Rectangle<float>& bounds,
+                                                  bool isOn, const juce::String& labelLeft, const juce::String& labelRight)
     {
+        const auto& t = theme();
+
         // Recessed slot
         g.setColour(juce::Colours::black.withAlpha(0.70f));
         g.fillRoundedRectangle(bounds, 3.0f);
-        g.setColour(silkscreenWhite.withAlpha(0.65f));
+        g.setColour(t.silkscreen.withAlpha(0.65f));
         g.drawRoundedRectangle(bounds, 3.0f, 1.0f);
 
         // Slide handle
@@ -137,40 +149,42 @@ namespace Replicant303
         g.fillRoundedRectangle(handleRect.translated(0.0f, 1.5f), 2.5f);
 
         // Molded ribbed black handle
-        g.setColour(juce::Colour(0xff222522));
+        g.setColour(t.knobRib);
         g.fillRoundedRectangle(handleRect, 2.0f);
         
         // Ribbed flutes on switch
-        g.setColour(juce::Colour(0xff444a45));
+        g.setColour(t.knobRib.brighter(0.30f));
         for (float rx = handleRect.getX() + 3.0f; rx < handleRect.getRight() - 2.0f; rx += 3.0f)
             g.drawVerticalLine((int)rx, handleRect.getY() + 2.0f, handleRect.getBottom() - 2.0f);
 
         // Pip highlight
-        g.setColour(juce::Colour(0xffdbe0dc));
+        g.setColour(t.metalBright);
         g.fillEllipse(handleRect.getCentreX() - 1.5f, handleRect.getCentreY() - 1.5f, 3.0f, 3.0f);
 
         // Labels
-        g.setColour(silkscreenWhite);
-        g.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+        g.setColour(t.silkscreen);
+        g.setFont(uiFont(9.5f, juce::Font::bold));
         if (labelLeft.isNotEmpty())
             g.drawText(labelLeft, (int)(bounds.getX() - 34.0f), (int)(bounds.getY() - 2.0f), 30, (int)(bounds.getHeight() + 4.0f), juce::Justification::centredRight);
         if (labelRight.isNotEmpty())
             g.drawText(labelRight, (int)(bounds.getRight() + 4.0f), (int)(bounds.getY() - 2.0f), 30, (int)(bounds.getHeight() + 4.0f), juce::Justification::centredLeft);
     }
 
-    void TranslucentGreenLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
-                                                       float sliderPosProportional, float rotaryStartAngle,
-                                                       float rotaryEndAngle, juce::Slider& /*slider*/)
+    void Replicant303LookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
+                                                   float sliderPosProportional, float rotaryStartAngle,
+                                                   float rotaryEndAngle, juce::Slider& /*slider*/)
     {
+        const auto& t = theme();
+
         auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat().reduced(2.0f);
         auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) / 2.0f;
         auto center = bounds.getCentre();
         auto toAngle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
 
         // 1. Internal translucent mold boss (plastic standoff under knob)
-        g.setColour(moldBossGreen.withAlpha(0.30f));
+        g.setColour(t.moldBoss.withAlpha(0.30f));
         g.fillEllipse(center.x - radius, center.y - radius, radius * 2.0f, radius * 2.0f);
-        g.setColour(moldBossGreen.withAlpha(0.50f));
+        g.setColour(t.moldBoss.withAlpha(0.50f));
         g.drawEllipse(center.x - radius * 0.95f, center.y - radius * 0.95f, radius * 1.9f, radius * 1.9f, 1.2f);
         g.drawEllipse(center.x - radius * 0.70f, center.y - radius * 0.70f, radius * 1.4f, radius * 1.4f, 1.0f);
 
@@ -186,11 +200,11 @@ namespace Replicant303
         g.fillEllipse(knobRect.translated(0.0f, 3.5f));
 
         // Ribbed dark plastic body
-        g.setColour(knobRibColor);
+        g.setColour(t.knobRib);
         g.fillEllipse(knobRect);
 
         // Fluted serrations around skirt (18 flutes)
-        g.setColour(juce::Colour(0xff161a17));
+        g.setColour(t.knobSkirtFlute);
         for (int i = 0; i < 18; ++i)
         {
             float a = i * (juce::MathConstants<float>::twoPi / 18.0f);
@@ -205,13 +219,13 @@ namespace Replicant303
         auto capRect = juce::Rectangle<float>(center.x - capRadius, center.y - capRadius, capRadius * 2.0f, capRadius * 2.0f);
 
         // Outer beveled ring of the aluminum cap
-        g.setColour(spunAluminumDark);
+        g.setColour(t.knobCapDark);
         g.fillEllipse(capRect);
 
         // Spun brushed aluminum gradient reflection
         juce::ColourGradient capGrad(
-            spunAluminumBright, center.x - capRadius * 0.35f, center.y - capRadius * 0.5f,
-            spunAluminumDark, center.x + capRadius * 0.5f, center.y + capRadius * 0.6f, false);
+            t.knobCapBright, center.x - capRadius * 0.35f, center.y - capRadius * 0.5f,
+            t.knobCapDark, center.x + capRadius * 0.5f, center.y + capRadius * 0.6f, false);
         g.setGradientFill(capGrad);
         g.fillEllipse(capRect.reduced(1.2f));
 
@@ -221,13 +235,13 @@ namespace Replicant303
         g.setColour(juce::Colours::black.withAlpha(0.18f));
         g.drawEllipse(capRect.reduced(capRadius * 0.60f), 0.8f);
 
-        // 5. Crisp Pointer Line (Black indicator line on the silver cap)
+        // 5. Crisp Pointer Line (indicator line on the cap)
         float pointerLength = capRadius * 0.88f;
         float cosP = std::sin(toAngle);
         float sinP = -std::cos(toAngle);
 
-        // Sharp black pointer
-        g.setColour(juce::Colour(0xff111412));
+        // Sharp pointer
+        g.setColour(t.knobPointer);
         g.drawLine(center.x, center.y, center.x + pointerLength * cosP, center.y + pointerLength * sinP, 2.5f);
 
         // Tip highlight
@@ -236,9 +250,11 @@ namespace Replicant303
                    center.x + pointerLength * cosP, center.y + pointerLength * sinP, 1.2f);
     }
 
-    void TranslucentGreenLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& button,
-                                                       bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown)
+    void Replicant303LookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& button,
+                                                   bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown)
     {
+        const auto& t = theme();
+
         auto bounds = button.getLocalBounds().toFloat().reduced(2.0f);
         bool isToggled = button.getToggleState();
 
@@ -250,8 +266,8 @@ namespace Replicant303
         g.fillRoundedRectangle(btnArea.translated(0.0f, 2.0f), 3.0f);
 
         // Tactile button body (Light metallic grey or dark depending on state)
-        juce::Colour btnTop = isToggled ? juce::Colour(0xffdbe2dd) : juce::Colour(0xff8a948d);
-        juce::Colour btnBottom = isToggled ? juce::Colour(0xff9aa29c) : juce::Colour(0xff4a524c);
+        juce::Colour btnTop = isToggled ? t.buttonFaceLit : t.switchFaceOff;
+        juce::Colour btnBottom = isToggled ? t.switchFaceOnBottom : t.switchFaceOffBottom;
         if (shouldDrawButtonAsHighlighted) btnTop = btnTop.brighter(0.15f);
         if (shouldDrawButtonAsDown) btnTop = btnTop.darker(0.2f);
 
@@ -262,21 +278,21 @@ namespace Replicant303
         g.setColour(juce::Colours::black.withAlpha(0.6f));
         g.drawRoundedRectangle(btnArea, 2.5f, 1.0f);
 
-        // Circular Red LED on button
+        // Circular LED on button
         auto ledArea = juce::Rectangle<float>(btnArea.getCentreX() - 4.0f, btnArea.getY() + 3.5f, 8.0f, 8.0f);
         
         // LED Chrome bezel
-        g.setColour(juce::Colour(0xff6a726c));
+        g.setColour(t.ledBezel);
         g.drawEllipse(ledArea.expanded(1.0f), 1.0f);
 
         if (isToggled)
         {
-            // Glowing red bloom
-            g.setColour(ledBrightRed.withAlpha(0.40f));
+            // Glowing LED bloom
+            g.setColour(t.ledBright.withAlpha(0.40f));
             g.fillEllipse(ledArea.expanded(4.0f));
 
             // Core lit LED
-            g.setColour(ledBrightRed);
+            g.setColour(t.ledBright);
             g.fillEllipse(ledArea);
 
             // Specular highlight on dome
@@ -285,30 +301,32 @@ namespace Replicant303
         }
         else
         {
-            // Unlit dark red LED
-            g.setColour(ledDarkRed);
+            // Unlit dark LED
+            g.setColour(t.ledDark);
             g.fillEllipse(ledArea);
             g.setColour(juce::Colours::white.withAlpha(0.25f));
             g.fillEllipse(ledArea.reduced(2.5f).translated(-0.8f, -0.8f));
         }
 
         // Button label
-        g.setColour(silkscreenWhite);
-        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        g.setColour(t.silkscreen);
+        g.setFont(uiFont(11.0f, juce::Font::bold));
         g.drawText(button.getButtonText(), bounds.reduced(6.0f, 0.0f), juce::Justification::centredLeft);
     }
 
-    void TranslucentGreenLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bool /*isButtonDown*/,
-                                                   int /*buttonX*/, int /*buttonY*/, int /*buttonW*/, int /*buttonH*/,
-                                                   juce::ComboBox& box)
+    void Replicant303LookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bool /*isButtonDown*/,
+                                               int /*buttonX*/, int /*buttonY*/, int /*buttonW*/, int /*buttonH*/,
+                                               juce::ComboBox& box)
     {
+        const auto& t = theme();
+
         auto bounds = juce::Rectangle<float>(0, 0, (float)width, (float)height).reduced(1.0f);
 
         // Translucent container
-        g.setColour(pcbDarkGreen.withAlpha(0.85f));
+        g.setColour(t.pcbDark.withAlpha(0.85f));
         g.fillRoundedRectangle(bounds, 3.0f);
 
-        g.setColour(silkscreenWhite.withAlpha(0.75f));
+        g.setColour(t.silkscreen.withAlpha(0.75f));
         g.drawRoundedRectangle(bounds, 3.0f, 1.2f);
 
         // Arrow icon
@@ -318,40 +336,53 @@ namespace Replicant303
                           arrowArea.getRight(), arrowArea.getY() + arrowArea.getHeight() * 0.35f,
                           arrowArea.getCentreX(), arrowArea.getBottom() - arrowArea.getHeight() * 0.25f);
 
-        g.setColour(box.isEnabled() ? silkscreenWhite : silkscreenWhite.withAlpha(0.4f));
+        g.setColour(box.isEnabled() ? t.silkscreen : t.silkscreen.withAlpha(0.4f));
         g.fillPath(arrow);
     }
 
-    void TranslucentGreenLookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Rectangle<int>& area,
-                                                        bool isSeparator, bool isActive, bool isHighlighted,
-                                                        bool isTicked, bool /*hasSubMenu*/, const juce::String& text,
-                                                        const juce::String& /*shortcutKeyText*/,
-                                                        const juce::Drawable* /*icon*/, const juce::Colour* /*textColour*/)
+    void Replicant303LookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Rectangle<int>& area,
+                                                    bool isSeparator, bool isActive, bool isHighlighted,
+                                                    bool isTicked, bool /*hasSubMenu*/, const juce::String& text,
+                                                    const juce::String& /*shortcutKeyText*/,
+                                                    const juce::Drawable* /*icon*/, const juce::Colour* /*textColour*/)
     {
+        const auto& t = theme();
+
         if (isSeparator)
         {
-            g.setColour(silkscreenWhite.withAlpha(0.3f));
+            g.setColour(t.silkscreen.withAlpha(0.3f));
             g.fillRect(area.reduced(4, 0).withHeight(1));
             return;
         }
 
         if (isHighlighted && isActive)
         {
-            g.setColour(acrylicGreen.darker(0.2f));
+            g.setColour(t.silkscreen.withAlpha(0.22f));
             g.fillRect(area);
         }
 
-        g.setColour(isHighlighted ? juce::Colours::white : silkscreenWhite);
-        g.setFont(juce::FontOptions(13.0f, juce::Font::plain));
+        g.setColour(isHighlighted ? t.silkscreen.brighter(0.4f) : t.silkscreen);
+        g.setFont(uiFont(13.0f, juce::Font::plain));
 
         auto textBounds = area.reduced(10, 0);
         g.drawFittedText(text, textBounds, juce::Justification::centredLeft, 1);
 
         if (isTicked)
         {
-            g.setColour(ledBrightRed);
+            g.setColour(t.ledBright);
             auto itemArea = area;
             g.fillEllipse(itemArea.removeFromRight(20).reduced(6).toFloat());
         }
+    }
+
+    //==============================================================================
+    juce::Font Replicant303LookAndFeel::getComboBoxFont(juce::ComboBox& box)
+    {
+        return juce::Font(juce::FontOptions(juce::jmin(15.0f * uiFontScale, (float) box.getHeight() * 0.85f)));
+    }
+
+    juce::Font Replicant303LookAndFeel::getPopupMenuFont()
+    {
+        return juce::Font(uiFont(15.0f));
     }
 }

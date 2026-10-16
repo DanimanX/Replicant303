@@ -15,6 +15,8 @@
 
 **Replicant303** is an authentic virtual analog emulation of the iconic **Roland TB-303**, featuring a procedural 3D interface inspired by the **Behringer TD-3 Translucent Green** edition.
 
+The panel ships with two selectable skins - the original **TD-3 Green** and **Obsidian Red** (black acrylic with red silkscreen) - chosen from the selector in the header and saved with the plugin state.
+
 It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive dual envelopes, capacitor-modeled slide, and squelch accent) with an integrated **5-model distortion unit** led by the legendary **ProCo Rat ("Poco Rat")** pedal.
 
 ---
@@ -22,6 +24,7 @@ It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive 
 ## ✨ Key Features
 
 ### 🎨 3D Translucent Green Interface
+* **Selectable Skins:** every colour of the panel (acrylic chassis, PCB underlay, silkscreen print, LEDs, 7-segment display, knob metal and tactile keys) comes from a theme table, so new skins are data rather than code. `TD-3 Green` and `Obsidian Red` ship today, selectable from the header and persisted in the plugin state.
 * **Procedural 3D PCB Underlay:** Visible circuit board with BA662 VCA, LM308N Op-Amp, AN6562 filter buffer, D8048C CPU, electrolytic capacitors, resistors, and copper traces.
 * **Translucent Emerald Acrylic:** Mold standoff bosses under every knob and jack, beveled 3D borders, and embossed `REPLICANT - 303` bottom lip.
 * **80s Digital LED Tempo Display:** Vintage red 7-segment clock display on deep black recessed acrylic, updating BPM in real time.

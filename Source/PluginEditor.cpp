@@ -3,6 +3,36 @@
 Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303AudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
+    // -------------------------------------------------------------------------
+    // 0. Panel skin: restore the saved skin, then bind the selector combo box.
+    //    This must happen before anything is painted.
+    // -------------------------------------------------------------------------
+    themeBox.addItemList(Replicant303::ThemeManager::getThemeNames(), 1);
+    addAndMakeVisible(themeBox);
+
+    if (auto* themeParam = audioProcessor.apvts.getParameter("ui_theme"))
+    {
+        themeAttachment = std::make_unique<juce::ParameterAttachment>(
+            *themeParam,
+            [this](float newNormalisedValue)
+            {
+                const int index = Replicant303::ThemeManager::normalizedToIndex(newNormalisedValue);
+                themeBox.setSelectedId(index + 1, juce::dontSendNotification);
+                Replicant303::ThemeManager::getInstance().setCurrentIndex(index);
+            });
+
+        themeAttachment->sendInitialUpdate();
+    }
+
+    themeBox.onChange = [this]()
+    {
+        if (themeAttachment != nullptr)
+            themeAttachment->setValueAsCompleteGesture(
+                Replicant303::ThemeManager::indexToNormalized(themeBox.getSelectedId() - 1));
+    };
+
+    Replicant303::ThemeManager::getInstance().addChangeListener(this);
+    customLookAndFeel.applyTheme();
     setLookAndFeel(&customLookAndFeel);
 
     // 1. Upper Synth Knobs
@@ -25,7 +55,7 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
     setupKnob(volumeKnob,    "volume",        "VOLUME",   true);
 
     tempoKnob.slider.onValueChange = [this]() {
-        repaint(495, 8, 150, 40);
+        repaint(495, 8, 143, 40);
     };
 
     // 4. Waveform Slide Switch (Saw / Square)
@@ -65,8 +95,18 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
 
 Replicant303AudioProcessorEditor::~Replicant303AudioProcessorEditor()
 {
+    Replicant303::ThemeManager::getInstance().removeChangeListener(this);
     stopTimer();
     setLookAndFeel(nullptr);
+}
+
+void Replicant303AudioProcessorEditor::changeListenerCallback(juce::ChangeBroadcaster* source)
+{
+    if (source != &Replicant303::ThemeManager::getInstance())
+        return;
+
+    customLookAndFeel.applyTheme();
+    repaint();
 }
 
 void Replicant303AudioProcessorEditor::setupKnob(ControlKnob& knob, const juce::String& paramId, const juce::String& labelText, bool hideLabel)
@@ -79,8 +119,9 @@ void Replicant303AudioProcessorEditor::setupKnob(ControlKnob& knob, const juce::
     {
         knob.label.setText(labelText, juce::dontSendNotification);
         knob.label.setJustificationType(juce::Justification::centred);
-        knob.label.setFont(juce::FontOptions(9.5f, juce::Font::bold));
-        knob.label.setColour(juce::Label::textColourId, Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
+        knob.label.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
+        // No explicit text colour: the LookAndFeel supplies it, so the label
+        // follows a skin change instead of being frozen at construction time.
         addAndMakeVisible(knob.label);
     }
 
@@ -254,7 +295,7 @@ void Replicant303AudioProcessorEditor::timerCallback()
             key.isPressed = false;
     }
 
-    repaint(495, 8, 150, 40);
+    repaint(495, 8, 143, 40);
     repaint(0, 245, getWidth(), getHeight() - 245);
 }
 
@@ -265,7 +306,7 @@ void Replicant303AudioProcessorEditor::timerCallback()
 void Replicant303AudioProcessorEditor::drawScrew(juce::Graphics& g, float x, float y)
 {
     // Standoff boss underneath screw
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::moldBossGreen.withAlpha(0.40f));
+    g.setColour(theme().moldBoss.withAlpha(0.40f));
     g.fillEllipse(x - 9.0f, y - 9.0f, 18.0f, 18.0f);
     g.drawEllipse(x - 9.0f, y - 9.0f, 18.0f, 18.0f, 1.2f);
 
@@ -286,16 +327,16 @@ void Replicant303AudioProcessorEditor::drawScrew(juce::Graphics& g, float x, flo
 void Replicant303AudioProcessorEditor::drawMoldBoss(juce::Graphics& g, float x, float y, float radius)
 {
     // Radiant translucent circular boss visible through emerald acrylic
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::moldBossGreen.withAlpha(0.28f));
+    g.setColour(theme().moldBoss.withAlpha(0.28f));
     g.fillEllipse(x - radius, y - radius, radius * 2.0f, radius * 2.0f);
 
     // Concentric reinforcement rings
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::moldBossGreen.withAlpha(0.52f));
+    g.setColour(theme().moldBoss.withAlpha(0.52f));
     g.drawEllipse(x - radius * 0.95f, y - radius * 0.95f, radius * 1.9f, radius * 1.9f, 1.2f);
     g.drawEllipse(x - radius * 0.65f, y - radius * 0.65f, radius * 1.3f, radius * 1.3f, 1.0f);
 
     // Center shaft/screw hole
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::pcbDarkGreen.darker(0.6f));
+    g.setColour(theme().pcbDark.darker(0.6f));
     g.fillEllipse(x - radius * 0.28f, y - radius * 0.28f, radius * 0.56f, radius * 0.56f);
 }
 
@@ -318,7 +359,7 @@ void Replicant303AudioProcessorEditor::drawIcChip(juce::Graphics& g, float x, fl
         g.fillRect(px - 1.2f, y - 4.5f, 2.4f, 4.5f);
         g.fillRect(px - 1.2f, y + h, 2.4f, 4.5f);
         // Solder pad
-        g.setColour(juce::Colour(0xff2cc246));
+        g.setColour(theme().pcbTrace);
         g.fillEllipse(px - 2.5f, y - 6.5f, 5.0f, 3.0f);
         g.fillEllipse(px - 2.5f, y + h + 3.5f, 5.0f, 3.0f);
         g.setColour(juce::Colour(0xffc8d0cb));
@@ -335,7 +376,7 @@ void Replicant303AudioProcessorEditor::drawIcChip(juce::Graphics& g, float x, fl
 
     // Laser-etched white part number
     g.setColour(juce::Colours::white.withAlpha(0.75f));
-    g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+    g.setFont(Replicant303::uiFont(8.5f, juce::Font::bold));
     g.drawText(partNumber, chipRect, juce::Justification::centred);
 }
 
@@ -357,7 +398,7 @@ void Replicant303AudioProcessorEditor::drawTransistor(juce::Graphics& g, float x
 
     // Silkscreen text
     g.setColour(juce::Colours::white.withAlpha(0.60f));
-    g.setFont(juce::FontOptions(6.5f, juce::Font::bold));
+    g.setFont(Replicant303::uiFont(6.5f, juce::Font::bold));
     g.drawText(partNumber, (int)(x - 8.0f), (int)(y - 5.0f), 17, 8, juce::Justification::centred);
 }
 
@@ -406,13 +447,13 @@ void Replicant303AudioProcessorEditor::draw3DCircuitBoard(juce::Graphics& g)
 {
     // 1. Dark Green FR4 PCB Ground Plane Substrate
     juce::ColourGradient pcbGrad(
-        Replicant303::TranslucentGreenLookAndFeel::pcbDarkGreen.brighter(0.12f), 0.0f, 0.0f,
-        Replicant303::TranslucentGreenLookAndFeel::pcbDarkGreen.darker(0.35f), 0.0f, (float)getHeight(), false);
+        theme().pcbDark.brighter(0.12f), 0.0f, 0.0f,
+        theme().pcbDark.darker(0.35f), 0.0f, (float)getHeight(), false);
     g.setGradientFill(pcbGrad);
     g.fillAll();
 
     // 2. Copper Routing Traces & Ground Pours
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::pcbTraceGreen.withAlpha(0.68f));
+    g.setColour(theme().pcbTrace.withAlpha(0.68f));
 
     // Horizontal power buses
     g.drawLine(20.0f, 115.0f, 1060.0f, 115.0f, 2.5f);
@@ -443,16 +484,16 @@ void Replicant303AudioProcessorEditor::draw3DCircuitBoard(juce::Graphics& g)
         g.drawLine(kx + 8.0f, 400.0f, kx + 8.0f, 495.0f, 1.2f);
     }
 
-    // Solder pads and Vias (Golden/Copper dots with dark holes)
-    g.setColour(juce::Colour(0xff45f058).withAlpha(0.65f));
+    // Solder pads and Vias (copper dots with dark holes)
+    g.setColour(theme().pcbVia.withAlpha(0.65f));
     for (int i = 0; i < 55; ++i)
     {
         float vx = 35.0f + static_cast<float>((i * 31) % 1010);
         float vy = 45.0f + static_cast<float>((i * 43) % 490);
         g.fillEllipse(vx - 2.5f, vy - 2.5f, 5.0f, 5.0f);
-        g.setColour(juce::Colour(0xff061f0c));
+        g.setColour(theme().pcbViaHole);
         g.fillEllipse(vx - 1.0f, vy - 1.0f, 2.0f, 2.0f);
-        g.setColour(juce::Colour(0xff45f058).withAlpha(0.65f));
+        g.setColour(theme().pcbVia.withAlpha(0.65f));
     }
 
     // 3. 3D Electronic Components
@@ -486,10 +527,10 @@ void Replicant303AudioProcessorEditor::draw3DCircuitBoard(juce::Graphics& g)
 
 void Replicant303AudioProcessorEditor::drawTranslucentAcrylicPanel(juce::Graphics& g)
 {
-    // 1. Semi-transparent Vibrant Emerald Green Acrylic Glaze
+    // 1. Translucent Acrylic Glaze (colour + translucency come from the active skin)
     juce::ColourGradient acrylicGrad(
-        Replicant303::TranslucentGreenLookAndFeel::acrylicGreen.withAlpha(0.68f), 0.0f, 0.0f,
-        Replicant303::TranslucentGreenLookAndFeel::acrylicGreen.darker(0.22f).withAlpha(0.74f), 0.0f, (float)getHeight(), false);
+        theme().chassisUp.withAlpha(theme().chassisAlphaUp), 0.0f, 0.0f,
+        theme().chassisDown.withAlpha(theme().chassisAlphaDown), 0.0f, (float)getHeight(), false);
     g.setGradientFill(acrylicGrad);
     g.fillAll();
 
@@ -525,7 +566,7 @@ void Replicant303AudioProcessorEditor::drawTranslucentAcrylicPanel(juce::Graphic
     g.drawRect(bounds.reduced(1.0f), 2.5f);
 
     // Specular highlight edges
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::acrylicHighlight.withAlpha(0.70f));
+    g.setColour(theme().chassisHighlight.withAlpha(0.70f));
     g.drawLine(3.0f, 3.0f, bounds.getRight() - 3.0f, 3.0f, 2.0f);
     g.drawLine(3.0f, 3.0f, 3.0f, bounds.getBottom() - 3.0f, 2.0f);
 
@@ -553,16 +594,16 @@ void Replicant303AudioProcessorEditor::drawTranslucentAcrylicPanel(juce::Graphic
 
 void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
 {
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
+    g.setColour(theme().silkscreen);
 
     // 1. Header Typography
-    g.setFont(juce::FontOptions(26.0f, juce::Font::bold));
+    g.setFont(Replicant303::uiFont(26.0f, juce::Font::bold));
     g.drawText("REPLICANT-303", 38, 12, 230, 28, juce::Justification::centredLeft);
 
-    g.setFont(juce::FontOptions(11.5f, juce::Font::plain));
+    g.setFont(Replicant303::uiFont(11.5f, juce::Font::plain));
     g.drawText("Computer Controlled", 265, 20, 160, 16, juce::Justification::centredLeft);
 
-    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+    g.setFont(Replicant303::uiFont(13.0f, juce::Font::bold));
     g.drawText("Analog Bass Line Synthesizer", getWidth() - 310, 16, 270, 20, juce::Justification::centredRight);
 
     // 2. 5 Patch Jacks (Center Top)
@@ -570,53 +611,53 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
     float jackXs[] = { 465.0f, 515.0f, 565.0f, 615.0f, 665.0f };
     const char* jackLabels[] = { "FILTER IN", "SYNC IN", "CV OUT", "GATE OUT", "PHONES" };
     for (int i = 0; i < 5; ++i)
-        Replicant303::TranslucentGreenLookAndFeel::drawJackSocket(g, jackXs[i], jackY, 19.0f, jackLabels[i]);
+        Replicant303::Replicant303LookAndFeel::drawJackSocket(g, jackXs[i], jackY, 19.0f, jackLabels[i]);
 
     // 3. Distortion Section Grouping Box (Top Right, wraps knobs AND switch)
     auto distBox = juce::Rectangle<float>(715.0f, 42.0f, 225.0f, 193.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.75f));
+    g.setColour(theme().silkscreen.withAlpha(0.75f));
     g.drawRoundedRectangle(distBox, 4.0f, 1.2f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
-    g.setFont(juce::FontOptions(10.5f, juce::Font::bold));
+    g.setColour(theme().silkscreen);
+    g.setFont(Replicant303::uiFont(10.5f, juce::Font::bold));
     g.drawText("DISTORTION", 725, 45, 90, 14, juce::Justification::centredLeft);
 
     // Divider inside distortion box separating knobs and switch
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.45f));
+    g.setColour(theme().silkscreen.withAlpha(0.45f));
     g.drawLine(725.0f, 138.0f, 930.0f, 138.0f, 1.0f);
 
     // Distortion switch OFF / ON labels
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
-    g.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+    g.setColour(theme().silkscreen);
+    g.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
     g.drawText("OFF", 760, 172, 32, 16, juce::Justification::centred);
     g.drawText("ON",  856, 172, 32, 16, juce::Justification::centred);
 
     // Distortion Active LED above switch
     auto distLedRect = juce::Rectangle<float>(820.0f, 150.0f, 8.0f, 8.0f);
-    g.setColour(juce::Colour(0xff3a423d));
+    g.setColour(theme().ledBezelDark);
     g.drawEllipse(distLedRect.expanded(1.0f), 1.0f);
     bool distOn = distActiveSwitch.getToggleState();
     if (distOn)
     {
-        g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledBrightRed.withAlpha(0.45f));
+        g.setColour(theme().ledBright.withAlpha(0.45f));
         g.fillEllipse(distLedRect.expanded(4.0f));
-        g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledBrightRed);
+        g.setColour(theme().ledBright);
         g.fillEllipse(distLedRect);
         g.setColour(juce::Colours::white.withAlpha(0.85f));
         g.fillEllipse(distLedRect.reduced(2.0f).translated(-0.6f, -0.6f));
     }
     else
     {
-        g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledDarkRed);
+        g.setColour(theme().ledDark);
         g.fillEllipse(distLedRect);
     }
 
     // 4. Middle Section Silkscreen Frames
     // Waveform Box
     auto waveBox = juce::Rectangle<float>(132.0f, 136.0f, 126.0f, 99.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.70f));
+    g.setColour(theme().silkscreen.withAlpha(0.70f));
     g.drawRoundedRectangle(waveBox, 3.5f, 1.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
-    g.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+    g.setColour(theme().silkscreen);
+    g.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
     g.drawText("WAVEFORM", (int)waveBox.getX(), (int)(waveBox.getY() + 4.0f), (int)waveBox.getWidth(), 14, juce::Justification::centred);
 
     // Saw & Square wave glyphs
@@ -637,13 +678,13 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
 
     // Track / Pattern Group Box
     auto trkBox = juce::Rectangle<float>(268.0f, 136.0f, 126.0f, 99.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.70f));
+    g.setColour(theme().silkscreen.withAlpha(0.70f));
     g.drawRoundedRectangle(trkBox, 3.5f, 1.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
-    g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
-    g.drawText("TRACK", (int)trkBox.getX(), (int)(trkBox.getY() + 4.0f), 55, 12, juce::Justification::centred);
-    g.drawText("PATTERN GROUP", (int)trkBox.getX() + 50, (int)(trkBox.getY() + 4.0f), 74, 12, juce::Justification::centred);
-    g.setFont(juce::FontOptions(8.0f, juce::Font::bold));
+    g.setColour(theme().silkscreen);
+    g.setFont(Replicant303::uiFont(9.0f, juce::Font::bold));
+    g.drawFittedText("TRACK", juce::Rectangle<int>((int)trkBox.getX(), (int)(trkBox.getY() + 4.0f), 44, 13), juce::Justification::centred, 1, 0.85f);
+    g.drawFittedText("PATTERN GROUP", juce::Rectangle<int>((int)trkBox.getX() + 44, (int)(trkBox.getY() + 4.0f), 82, 13), juce::Justification::centred, 1, 0.85f);
+    g.setFont(Replicant303::uiFont(8.0f, juce::Font::bold));
     g.drawText("I", 282, 178, 12, 12, juce::Justification::centred);
     g.drawText("II", 290, 160, 12, 12, juce::Justification::centred);
     g.drawText("III", 360, 160, 14, 12, juce::Justification::centred);
@@ -651,14 +692,14 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
 
     // Distortion Model Box
     auto modeBox = juce::Rectangle<float>(404.0f, 136.0f, 216.0f, 99.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.70f));
+    g.setColour(theme().silkscreen.withAlpha(0.70f));
     g.drawRoundedRectangle(modeBox, 3.5f, 1.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
-    g.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+    g.setColour(theme().silkscreen);
+    g.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
     g.drawText("DISTORTION MODEL", (int)modeBox.getX(), (int)(modeBox.getY() + 4.0f), (int)modeBox.getWidth(), 14, juce::Justification::centred);
 
     // Model ticks around rotary knob
-    g.setFont(juce::FontOptions(7.5f, juce::Font::bold));
+    g.setFont(Replicant303::uiFont(7.5f, juce::Font::bold));
     g.drawText("RAT",  418, 208, 24, 10, juce::Justification::centred);
     g.drawText("TUBE", 404, 180, 26, 10, juce::Justification::centred);
     g.drawText("CLIP", 434, 146, 24, 10, juce::Justification::centred);
@@ -669,7 +710,7 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
     auto logoCenter = juce::Point<float>(668.0f, 185.0f);
     juce::Path logo;
     logo.addEllipse(logoCenter.x - 19.0f, logoCenter.y - 19.0f, 38.0f, 38.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.85f));
+    g.setColour(theme().silkscreen.withAlpha(0.85f));
     g.strokePath(logo, juce::PathStrokeType(1.6f));
 
     juce::Path innerWave;
@@ -677,22 +718,22 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
     innerWave.cubicTo(logoCenter.x - 6.0f, logoCenter.y - 15.0f, logoCenter.x + 6.0f, logoCenter.y + 15.0f, logoCenter.x + 13.0f, logoCenter.y - 2.0f);
     g.strokePath(innerWave, juce::PathStrokeType(2.4f));
 
-    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    g.setFont(Replicant303::uiFont(11.0f, juce::Font::bold));
     g.drawText("DanimanX", (int)(logoCenter.x - 45.0f), (int)(logoCenter.y + 22.0f), 90, 14, juce::Justification::centred);
 
     // Tempo & Volume Markings
-    g.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+    g.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
     g.drawText("TEMPO", 36, 130, 68, 14, juce::Justification::centred);
     g.drawText("VOLUME", 968, 130, 68, 14, juce::Justification::centred);
 
-    g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+    g.setFont(Replicant303::uiFont(8.5f, juce::Font::bold));
     g.drawText("SLOW /", 28, 224, 38, 14, juce::Justification::centredLeft);
     g.drawText("FAST",   80, 224, 32, 14, juce::Justification::centredRight);
     g.drawText("MIN /",  960, 224, 34, 14, juce::Justification::centredLeft);
     g.drawText("MAX",   1012, 224, 28, 14, juce::Justification::centredRight);
 
     // 5. Bottom Horizontal Silkscreen Divider Bar
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.85f));
+    g.setColour(theme().silkscreen.withAlpha(0.85f));
     g.drawLine(20.0f, 250.0f, (float)getWidth() - 20.0f, 250.0f, 1.5f);
     g.setColour(juce::Colours::black.withAlpha(0.35f));
     g.drawLine(20.0f, 251.5f, (float)getWidth() - 20.0f, 251.5f, 1.0f);
@@ -700,35 +741,35 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
     // 6. Sequencer Silkscreen Framing Boxes
     // Left Box
     auto leftBox = juce::Rectangle<float>(24.0f, 260.0f, 152.0f, 265.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.60f));
+    g.setColour(theme().silkscreen.withAlpha(0.60f));
     g.drawRoundedRectangle(leftBox, 3.5f, 1.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
-    g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+    g.setColour(theme().silkscreen);
+    g.setFont(Replicant303::uiFont(8.5f, juce::Font::bold));
     g.drawText("D.C.", 32, 264, 24, 12, juce::Justification::centredLeft);
     g.drawText("BAR RESET", 62, 264, 58, 12, juce::Justification::centred);
     g.drawText("CLEAR", 124, 264, 40, 12, juce::Justification::centred);
 
     // Keyboard Box
     auto kbdBox = juce::Rectangle<float>(186.0f, 260.0f, 420.0f, 265.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.60f));
+    g.setColour(theme().silkscreen.withAlpha(0.60f));
     g.drawRoundedRectangle(kbdBox, 3.5f, 1.0f);
 
     // Time Mode Box
     auto timeBox = juce::Rectangle<float>(616.0f, 260.0f, 276.0f, 265.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.60f));
+    g.setColour(theme().silkscreen.withAlpha(0.60f));
     g.drawRoundedRectangle(timeBox, 3.5f, 1.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
-    g.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+    g.setColour(theme().silkscreen);
+    g.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
     g.drawText("TIME MODE", (int)timeBox.getX(), (int)(timeBox.getY() + 4.0f), (int)timeBox.getWidth(), 14, juce::Justification::centred);
 
     // Far Right Sequencer Box
     auto rgtBox = juce::Rectangle<float>(902.0f, 260.0f, 154.0f, 265.0f);
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite.withAlpha(0.60f));
+    g.setColour(theme().silkscreen.withAlpha(0.60f));
     g.drawRoundedRectangle(rgtBox, 3.5f, 1.0f);
 
     // 7. Step Numbers and Sublabels
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
-    g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+    g.setColour(theme().silkscreen);
+    g.setFont(Replicant303::uiFont(8.5f, juce::Font::bold));
 
     // Keyboard Black Key Labels (above black LEDs)
     for (auto& key : pianoKeys)
@@ -748,9 +789,9 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
                 g.drawText(key.subLabel, (int)(key.bounds.getX() - 6.0f), (int)(key.bounds.getY() - 32.0f), (int)(key.bounds.getWidth() + 12.0f), 12, juce::Justification::centred);
             if (key.stepLabel.isNotEmpty())
             {
-                g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+                g.setFont(Replicant303::uiFont(10.0f, juce::Font::bold));
                 g.drawText(key.stepLabel, (int)(key.bounds.getX() - 4.0f), (int)(key.bounds.getBottom() + 4.0f), (int)(key.bounds.getWidth() + 8.0f), 14, juce::Justification::centred);
-                g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+                g.setFont(Replicant303::uiFont(8.5f, juce::Font::bold));
             }
         }
     }
@@ -760,27 +801,27 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
     {
         if (btn.stepLabel.isNotEmpty())
         {
-            g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+            g.setFont(Replicant303::uiFont(10.0f, juce::Font::bold));
             g.drawText(btn.stepLabel, (int)(btn.bounds.getX() - 4.0f), 504, (int)(btn.bounds.getWidth() + 8.0f), 14, juce::Justification::centred);
-            g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+            g.setFont(Replicant303::uiFont(8.5f, juce::Font::bold));
         }
     }
 
     // 8. 3D Embossed Transparent Plastic Logo across Bottom Lip
     juce::String embossedText = "R  E  P  L  I  C  A  N  T   -   3  0  3";
     auto embRect = juce::Rectangle<float>(0.0f, 548.0f, (float)getWidth(), 30.0f);
-    g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
+    g.setFont(Replicant303::uiFont(18.0f, juce::Font::bold));
 
     // Recessed drop shadow
-    g.setColour(juce::Colour(0xff092810).withAlpha(0.70f));
+    g.setColour(theme().chassisEmbossShadow.withAlpha(0.70f));
     g.drawText(embossedText, embRect.translated(0.0f, 1.5f), juce::Justification::centred);
 
     // Specular plastic highlight
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::acrylicHighlight.withAlpha(0.60f));
+    g.setColour(theme().chassisHighlight.withAlpha(0.60f));
     g.drawText(embossedText, embRect.translated(0.0f, -1.0f), juce::Justification::centred);
 
     // Core embossed lettering
-    g.setColour(Replicant303::TranslucentGreenLookAndFeel::acrylicGreen.brighter(0.15f).withAlpha(0.40f));
+    g.setColour(theme().chassisUp.brighter(0.15f).withAlpha(0.40f));
     g.drawText(embossedText, embRect, juce::Justification::centred);
 }
 
@@ -794,7 +835,7 @@ void Replicant303AudioProcessorEditor::drawPianoKeysAndLeds(juce::Graphics& g)
         g.fillRoundedRectangle(btn.bounds.translated(0.0f, 2.5f), 2.5f);
 
         // Tactile button top
-        juce::Colour btnCol = btn.isLit ? juce::Colour(0xffdbe2dd) : juce::Colour(0xffa8b0aa);
+        juce::Colour btnCol = btn.isLit ? theme().buttonFaceLit : theme().buttonFaceIdle;
         juce::ColourGradient grad(btnCol.brighter(0.12f), btn.bounds.getX(), btn.bounds.getY(),
                                   btnCol.darker(0.35f), btn.bounds.getX(), btn.bounds.getBottom(), false);
         g.setGradientFill(grad);
@@ -803,35 +844,40 @@ void Replicant303AudioProcessorEditor::drawPianoKeysAndLeds(juce::Graphics& g)
         g.drawRoundedRectangle(btn.bounds, 2.0f, 1.0f);
 
         // Label on/below button
-        g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
-        g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+        g.setColour(theme().silkscreen);
+        g.setFont(Replicant303::uiFont(8.5f, juce::Font::bold));
         g.drawText(btn.label, (int)(btn.bounds.getX() - 8.0f), (int)(btn.bounds.getBottom() + 2.0f), (int)(btn.bounds.getWidth() + 16.0f), 14, juce::Justification::centred);
 
         if (btn.subLabel.isNotEmpty())
         {
-            g.setFont(juce::FontOptions(7.5f, juce::Font::plain));
-            g.drawText(btn.subLabel, (int)(btn.bounds.getX() - 12.0f), (int)(btn.bounds.getBottom() + 14.0f), (int)(btn.bounds.getWidth() + 24.0f), 12, juce::Justification::centred);
+            g.setFont(Replicant303::uiFont(7.5f, juce::Font::plain));
+            // Buttons sit close together, so allow a small horizontal squeeze rather
+            // than ellipsising labels such as "PATTERN SECTION".
+            g.drawFittedText(btn.subLabel,
+                             juce::Rectangle<int>((int)(btn.bounds.getX() - 16.0f), (int)(btn.bounds.getBottom() + 14.0f),
+                                                  (int)(btn.bounds.getWidth() + 32.0f), 13),
+                             juce::Justification::centred, 1, 0.72f);
         }
 
         // Circular Red LED
         if (btn.hasLed)
         {
             auto ledRect = juce::Rectangle<float>(btn.ledPos.x - 4.0f, btn.ledPos.y - 4.0f, 8.0f, 8.0f);
-            g.setColour(juce::Colour(0xff3a423d));
+            g.setColour(theme().ledBezelDark);
             g.drawEllipse(ledRect.expanded(1.0f), 1.0f);
 
             if (btn.isLit)
             {
-                g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledBrightRed.withAlpha(0.50f));
+                g.setColour(theme().ledBright.withAlpha(0.50f));
                 g.fillEllipse(ledRect.expanded(4.5f));
-                g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledBrightRed);
+                g.setColour(theme().ledBright);
                 g.fillEllipse(ledRect);
                 g.setColour(juce::Colours::white.withAlpha(0.90f));
                 g.fillEllipse(ledRect.reduced(2.0f).translated(-0.6f, -0.6f));
             }
             else
             {
-                g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledDarkRed);
+                g.setColour(theme().ledDark);
                 g.fillEllipse(ledRect);
             }
         }
@@ -846,9 +892,9 @@ void Replicant303AudioProcessorEditor::drawPianoKeysAndLeds(juce::Graphics& g)
         g.setColour(juce::Colours::black.withAlpha(0.50f));
         g.fillRoundedRectangle(key.bounds.translated(0.0f, 3.0f), 3.0f);
 
-        // Tactile white/light silver button
-        juce::Colour keyTop = key.isPressed ? juce::Colour(0xffc5cdc7) : juce::Colour(0xfff2f6f3);
-        juce::Colour keyBottom = key.isPressed ? juce::Colour(0xff8a928c) : juce::Colour(0xffbec6c0);
+        // Tactile button (light metal when lit, darker when idle)
+        juce::Colour keyTop = key.isPressed ? theme().keyFacePressedUp : theme().keyFaceUp;
+        juce::Colour keyBottom = key.isPressed ? theme().keyFacePressedDown : theme().keyFaceDown;
         juce::ColourGradient keyGrad(keyTop, key.bounds.getX(), key.bounds.getY(),
                                      keyBottom, key.bounds.getX(), key.bounds.getBottom(), false);
         g.setGradientFill(keyGrad);
@@ -859,26 +905,26 @@ void Replicant303AudioProcessorEditor::drawPianoKeysAndLeds(juce::Graphics& g)
 
         // Note letter on key
         g.setColour(juce::Colour(0xff181c19));
-        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        g.setFont(Replicant303::uiFont(11.0f, juce::Font::bold));
         g.drawText(key.name, key.bounds.withTrimmedTop(key.bounds.getHeight() * 0.45f), juce::Justification::centred);
 
         // Red LED above key
         auto ledRect = juce::Rectangle<float>(key.ledPos.x - 4.0f, key.ledPos.y - 4.0f, 8.0f, 8.0f);
-        g.setColour(juce::Colour(0xff3a423d));
+        g.setColour(theme().ledBezelDark);
         g.drawEllipse(ledRect.expanded(1.0f), 1.0f);
 
         if (key.isPressed)
         {
-            g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledBrightRed.withAlpha(0.50f));
+            g.setColour(theme().ledBright.withAlpha(0.50f));
             g.fillEllipse(ledRect.expanded(5.0f));
-            g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledBrightRed);
+            g.setColour(theme().ledBright);
             g.fillEllipse(ledRect);
             g.setColour(juce::Colours::white.withAlpha(0.90f));
             g.fillEllipse(ledRect.reduced(2.0f).translated(-0.6f, -0.6f));
         }
         else
         {
-            g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledDarkRed);
+            g.setColour(theme().ledDark);
             g.fillEllipse(ledRect);
         }
     }
@@ -893,8 +939,8 @@ void Replicant303AudioProcessorEditor::drawPianoKeysAndLeds(juce::Graphics& g)
         g.fillRoundedRectangle(key.bounds.translated(0.0f, 3.5f), 2.5f);
 
         // Tactile dark charcoal button
-        juce::Colour keyTop = key.isPressed ? juce::Colour(0xff181c19) : juce::Colour(0xff3a403b);
-        juce::Colour keyBottom = key.isPressed ? juce::Colour(0xff0c0f0d) : juce::Colour(0xff1c201e);
+        juce::Colour keyTop = key.isPressed ? theme().darkKeyFacePressedUp : theme().darkKeyFaceUp;
+        juce::Colour keyBottom = key.isPressed ? theme().darkKeyFacePressedDown : theme().darkKeyFaceDown;
         juce::ColourGradient keyGrad(keyTop, key.bounds.getX(), key.bounds.getY(),
                                      keyBottom, key.bounds.getX(), key.bounds.getBottom(), false);
         g.setGradientFill(keyGrad);
@@ -904,27 +950,27 @@ void Replicant303AudioProcessorEditor::drawPianoKeysAndLeds(juce::Graphics& g)
         g.drawRoundedRectangle(key.bounds, 2.0f, 1.0f);
 
         // Note letter on black key
-        g.setColour(Replicant303::TranslucentGreenLookAndFeel::silkscreenWhite);
-        g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+        g.setColour(theme().silkscreen);
+        g.setFont(Replicant303::uiFont(10.0f, juce::Font::bold));
         g.drawText(key.name, key.bounds, juce::Justification::centred);
 
         // Red LED above black key
         auto ledRect = juce::Rectangle<float>(key.ledPos.x - 4.0f, key.ledPos.y - 4.0f, 8.0f, 8.0f);
-        g.setColour(juce::Colour(0xff3a423d));
+        g.setColour(theme().ledBezelDark);
         g.drawEllipse(ledRect.expanded(1.0f), 1.0f);
 
         if (key.isPressed)
         {
-            g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledBrightRed.withAlpha(0.50f));
+            g.setColour(theme().ledBright.withAlpha(0.50f));
             g.fillEllipse(ledRect.expanded(5.0f));
-            g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledBrightRed);
+            g.setColour(theme().ledBright);
             g.fillEllipse(ledRect);
             g.setColour(juce::Colours::white.withAlpha(0.90f));
             g.fillEllipse(ledRect.reduced(2.0f).translated(-0.6f, -0.6f));
         }
         else
         {
-            g.setColour(Replicant303::TranslucentGreenLookAndFeel::ledDarkRed);
+            g.setColour(theme().ledDark);
             g.fillEllipse(ledRect);
         }
     }
@@ -1019,11 +1065,11 @@ void Replicant303AudioProcessorEditor::draw7SegmentDigit(juce::Graphics& g, floa
     for (auto* p : segs)
         p->applyTransform(slantTransform);
 
-    // 80s Red LED Color Palette
-    const juce::Colour unlitSegColor  = juce::Colour(0xff220407).withAlpha(0.70f); // Dark ghost segment
-    const juce::Colour litGlowColor   = juce::Colour(0xffff1220).withAlpha(0.38f); // Diffuse red bloom
-    const juce::Colour litCoreColor   = juce::Colour(0xffff2832);                  // Solid hot LED red
-    const juce::Colour litFilament    = juce::Colour(0xffffd0d8).withAlpha(0.85f); // White-hot center filament
+    // LED Color Palette (skin driven)
+    const juce::Colour unlitSegColor  = theme().displayUnlit.withAlpha(0.70f);   // Dark ghost segment
+    const juce::Colour litGlowColor   = theme().displayGlow.withAlpha(0.38f);    // Diffuse bloom
+    const juce::Colour litCoreColor   = theme().displayLit;                      // Solid hot LED
+    const juce::Colour litFilament    = theme().displayFilament.withAlpha(0.85f); // White-hot center filament
 
     for (int i = 0; i < 7; ++i)
     {
@@ -1064,8 +1110,8 @@ void Replicant303AudioProcessorEditor::drawDigitalTempoClock(juce::Graphics& g)
     g.fillRoundedRectangle(boxX, boxY + 1.5f, boxW, boxH, 3.5f);
 
     // 2. Beveled Dark Frame / Bezel
-    juce::ColourGradient bezelGrad(juce::Colour(0xff28302a), boxX, boxY,
-                                   juce::Colour(0xff101411), boxX, boxY + boxH, false);
+    juce::ColourGradient bezelGrad(theme().displayBezelUp, boxX, boxY,
+                                   theme().displayBezelDown, boxX, boxY + boxH, false);
     g.setGradientFill(bezelGrad);
     g.fillRoundedRectangle(boxX, boxY, boxW, boxH, 3.5f);
 
@@ -1074,7 +1120,7 @@ void Replicant303AudioProcessorEditor::drawDigitalTempoClock(juce::Graphics& g)
 
     // 3. Deep Black Display Chamber
     auto displayArea = juce::Rectangle<float>(boxX + 4.0f, boxY + 3.0f, boxW - 8.0f, boxH - 6.0f);
-    g.setColour(juce::Colour(0xff050706));
+    g.setColour(theme().displayChamber);
     g.fillRoundedRectangle(displayArea, 2.0f);
 
     // 4. Smoked Filter Glass (dark red-tinted acrylic lens)
@@ -1087,12 +1133,12 @@ void Replicant303AudioProcessorEditor::drawDigitalTempoClock(juce::Graphics& g)
         g.drawHorizontalLine((int)ry, displayArea.getX() + 2.0f, displayArea.getRight() - 2.0f);
 
     // 6. Labels: TEMPO (top-left) and BPM (bottom-right)
-    g.setColour(juce::Colour(0xffb8c2ba));
-    g.setFont(juce::FontOptions(7.5f, juce::Font::bold));
+    g.setColour(theme().displayCaption);
+    g.setFont(Replicant303::uiFont(7.5f, juce::Font::bold));
     g.drawText("TEMPO", (int)displayArea.getX() + 5, (int)displayArea.getY() + 8, 36, 10, juce::Justification::centredLeft);
 
     g.setColour(juce::Colour(0xffff2834).withAlpha(0.85f));
-    g.setFont(juce::FontOptions(8.0f, juce::Font::bold));
+    g.setFont(Replicant303::uiFont(8.0f, juce::Font::bold));
     g.drawText("BPM", (int)displayArea.getRight() - 27, (int)displayArea.getBottom() - 12, 24, 10, juce::Justification::centredRight);
 
     // 7. Render 3 7-Segment Digits
@@ -1120,9 +1166,9 @@ void Replicant303AudioProcessorEditor::drawDigitalTempoClock(juce::Graphics& g)
 
     // 8. Flashing/Glowing Beat Dot (Active LED pulse)
     auto beatDot = juce::Rectangle<float>(boxX + 104.0f, boxY + 8.0f, 4.5f, 4.5f);
-    g.setColour(juce::Colour(0xffff2028).withAlpha(0.40f));
+    g.setColour(theme().ledBright.withAlpha(0.40f));
     g.fillEllipse(beatDot.expanded(2.5f));
-    g.setColour(juce::Colour(0xffff2028));
+    g.setColour(theme().ledBright);
     g.fillEllipse(beatDot);
     g.setColour(juce::Colours::white.withAlpha(0.80f));
     g.fillEllipse(beatDot.reduced(1.2f).translated(-0.4f, -0.4f));
@@ -1206,6 +1252,9 @@ void Replicant303AudioProcessorEditor::resized()
 
     // Distortion Model ComboBox
     distModelBox.setBounds(484, 172, 128, 28);
+
+    // Panel skin selector (header, between the tempo display and the strapline)
+    themeBox.setBounds(644, 13, 124, 25);
 
     // Distortion On/Off Switch (Inside Distortion Box, directly under distortion knobs!)
     distActiveSwitch.setBounds(800, 168, 48, 24);

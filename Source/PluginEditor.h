@@ -2,10 +2,12 @@
 
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "PluginProcessor.h"
-#include "GUI/TranslucentGreenLookAndFeel.h"
+#include "GUI/Replicant303LookAndFeel.h"
+#include "GUI/Replicant303Theme.h"
 
 class Replicant303AudioProcessorEditor : public juce::AudioProcessorEditor,
-                                        private juce::Timer
+                                         private juce::Timer,
+                                         private juce::ChangeListener
 {
 public:
     explicit Replicant303AudioProcessorEditor(Replicant303AudioProcessor&);
@@ -19,8 +21,17 @@ public:
 private:
     void timerCallback() override;
 
+    /** Fired by the ThemeManager whenever the user picks another panel skin. */
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+
+    /** Palette currently in force (all procedural drawing reads from here). */
+    static const Replicant303::Theme& theme() noexcept
+    {
+        return Replicant303::ThemeManager::getInstance().getCurrentTheme();
+    }
+
     Replicant303AudioProcessor& audioProcessor;
-    Replicant303::TranslucentGreenLookAndFeel customLookAndFeel;
+    Replicant303::Replicant303LookAndFeel customLookAndFeel;
 
     // -------------------------------------------------------------------------
     // Sliders & Attachments
@@ -60,6 +71,9 @@ private:
 
     juce::ComboBox distModelBox; // 5-model distortion selector
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> distModelAttachment;
+
+    juce::ComboBox themeBox;     // Panel skin selector (Green / Black-Red / ...)
+    std::unique_ptr<juce::ParameterAttachment> themeAttachment;
 
     // -------------------------------------------------------------------------
     // Interactive 13-Key Keyboard & Function Buttons (Bottom Section)

@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "GUI/Replicant303Theme.h"
 
 Replicant303AudioProcessor::Replicant303AudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
@@ -118,6 +119,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout Replicant303AudioProcessor::
         juce::ParameterID{ "dist_mix", 1 }, "Distortion Mix",
         juce::NormalisableRange<float>(0.0f, 1.0f, 0.005f), 0.85f,
         juce::AudioParameterFloatAttributes().withLabel("%")));
+
+    // 14. UI Theme (panel skin selector; saved with the plugin state)
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{ "ui_theme", 1 }, "UI Theme",
+        Replicant303::ThemeManager::getThemeNames(), 0));
 
     return { params.begin(), params.end() };
 }

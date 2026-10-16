@@ -1,14 +1,28 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include "Replicant303Theme.h"
 
 namespace Replicant303
 {
-    class TranslucentGreenLookAndFeel : public juce::LookAndFeel_V4
+    /** Theme driven hardware Look & Feel.
+
+        Every colour comes from the currently active Theme, so switching skins
+        restyles the whole panel (component chrome, knobs, jacks, LEDs, keys)
+        without touching the editor layout.
+    */
+    class Replicant303LookAndFeel : public juce::LookAndFeel_V4
     {
     public:
-        TranslucentGreenLookAndFeel();
-        ~TranslucentGreenLookAndFeel() override = default;
+        Replicant303LookAndFeel();
+        ~Replicant303LookAndFeel() override = default;
+
+        /** Re-reads the active theme and re-applies every component colour.
+            Message thread only. */
+        void applyTheme();
+
+        /** The palette currently in force. */
+        static const Theme& theme() noexcept { return ThemeManager::getInstance().getCurrentTheme(); }
 
         // Custom Rotary Slider Drawing (TD-3 style: fluted cylindrical skirt, spun aluminum cap)
         void drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
@@ -29,23 +43,17 @@ namespace Replicant303
                                const juce::String& shortcutKeyText,
                                const juce::Drawable* icon, const juce::Colour* textColour) override;
 
+        // Scaled typography for component-drawn text
+        juce::Font getComboBoxFont(juce::ComboBox& box) override;
+        juce::Font getPopupMenuFont() override;
+
         // Helpers for drawing authentic hardware elements
         static void drawKnobTicks(juce::Graphics& g, float centerX, float centerY, float radius,
                                  float startAngle, float endAngle, int numTicks = 11);
         static void drawJackSocket(juce::Graphics& g, float centerX, float centerY, float diameter, const juce::String& label);
         static void drawSlideSwitch(juce::Graphics& g, const juce::Rectangle<float>& bounds, bool isOn, const juce::String& labelLeft, const juce::String& labelRight);
 
-        // Color Constants based on the Behringer TD-3-TG
-        static const juce::Colour acrylicGreen;       // Vibrant translucent green
-        static const juce::Colour acrylicHighlight;   // Glossy rim green
-        static const juce::Colour pcbDarkGreen;       // PCB substrate below
-        static const juce::Colour pcbTraceGreen;      // Copper traces
-        static const juce::Colour moldBossGreen;      // Translucent mold bosses/pillars
-        static const juce::Colour ledBrightRed;       // 303 Red LED active
-        static const juce::Colour ledDarkRed;         // 303 Red LED unlit
-        static const juce::Colour spunAluminumBright; // Knob cap top
-        static const juce::Colour spunAluminumDark;   // Knob cap shadow
-        static const juce::Colour knobRibColor;       // Fluted knob skirt
-        static const juce::Colour silkscreenWhite;    // Crisp white panel print
+    private:
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Replicant303LookAndFeel)
     };
 }
