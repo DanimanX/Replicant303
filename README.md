@@ -1,12 +1,22 @@
 # REPLICANT 303 // Virtual Analog TB-303 Synthesizer
 
 <p align="center">
-  <strong>Virtual Analog TB-303 Emulation with Translucent Green &amp; Obsidian Red Panel Skins and a Multi-Distortion Engine</strong><br>
+  <strong>Virtual Analog TB-303 Emulation with an 8 × 16 Pattern Sequencer, Two Panel Skins and a Multi-Distortion Engine</strong><br>
   <em>Audio Plugin: VST3 • AU • Standalone for macOS, Windows, and Linux</em>
 </p>
 
 <p align="center">
-  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 UI in both skins: Behringer TD-3 Translucent Green and Obsidian Red, each with an 80s red digital LED tempo clock and a skin selector in the header" width="950">
+  <a href="assets/replicant303_promo_hardtechno_1080p.mp4">
+    <img src="assets/replicant303_promo_hardtechno_poster.png" alt="Replicant 303 — hard techno / acid promo, 1080p" width="950">
+  </a>
+</p>
+
+<p align="center">
+  <em>▶ Watch the 1080p promo — hard techno / acid protocol.</em>
+</p>
+
+<p align="center">
+  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 UI in both skins: TD-3 Translucent Green and Obsidian Red, each with the LED tempo clock, skin selector and PATTERN drawer tab" width="950">
 </p>
 
 <p align="center">
@@ -24,7 +34,7 @@ The panel ships with two selectable skins, chosen from the selector in the heade
 * **TD-3 Green** — inspired by the **Behringer TD-3 Translucent Green** edition.
 * **Obsidian Red** — black acrylic panel with red silkscreen lettering, copper traces and knob pointers.
 
-It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive dual envelopes, capacitor-modeled slide, and squelch accent) with an integrated **5-model distortion unit** led by the legendary **ProCo Rat ("Poco Rat")** pedal.
+It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive dual envelopes, capacitor-modeled slide, and squelch accent) with an integrated **5-model distortion unit** led by the legendary **ProCo Rat ("Poco Rat")** pedal — and a **slide-down pattern core** that turns the plugin into a self-contained acid sequencer.
 
 ---
 
@@ -44,6 +54,18 @@ It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive 
 * **VCF:** 4-pole diode ladder with non-linear $\tanh$ saturation, AC high-pass decoupling, and self-oscillation.
 * **Slide:** Continuous 60ms capacitor portamento without envelope re-triggering.
 * **Accent:** Dynamic envelope speedup (~200ms) with +4.5 dB boost and squelch bite on velocities $\ge 100$.
+
+### 🥁 Pattern Core — Step Sequencer & MIDI Export
+* **Slide-down drawer:** the panel opens downward (`PATTERN` tab in the header, the hardware `WRITE / NEXT` button, or `Esc` to close) to reveal a smoked-acrylic sequencer that is drawn with the same procedural hardware as the panel.
+* **8 patterns × 16 steps:** patterns `A`–`H` are switched live from the drawer or from the hardware `BACK` / `WRITE / NEXT` buttons; the `START / STOP` button drives the transport (`Space` works too).
+* **Phoscyon-style editing:** a two-octave piano roll paints notes by dragging, right-click mutes a step, and dedicated **GATE / ACCENT / SLIDE** lanes toggle the 303 articulation per step. The inspector shows the selected step's note, octave and articulation.
+* **Musical controls:** pattern length (1–16), swing, internal clock or **host transport sync** (tempo and start/stop), and live step telemetry on the grid.
+* **MIDI export:** `EXPORT MIDI` writes the current pattern as a Standard MIDI File (16th grid, accents as velocity 110, slides as full-length notes) ready to drag into any DAW.
+* **Saved with the plugin:** the full bank, active pattern, swing and sync mode persist in the plugin state.
+
+<p align="center">
+  <img src="assets/replicant303_sequencer.png" alt="Replicant 303 pattern core drawer: 16-step piano roll, gate/accent/slide lanes, pattern slots A–H and MIDI export" width="950">
+</p>
 
 ### 💣 5 Multi-Distortion Models
 
@@ -89,16 +111,44 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja -C build
 ```
 
+### Tests
+
+The headless regression suite (88 checks) covers the pattern model, the clock
+(tempo, swing, accent, slide, length, host sync, stop/release, mid-bar length
+changes), MIDI export, sample-accurate MIDI in the synth engine, all five
+distortion models, the plugin state round-trip and the drawer animation:
+
+```bash
+ninja -C build run_tests
+./build/run_tests                 # macOS / Windows
+xvfb-run -a ./build/run_tests     # Linux, without a display
+```
+
 ### Refreshing the panel screenshots
 
 `generate_snapshot` renders the editor off-screen to a PNG, so the README previews can be
-regenerated without opening a DAW. It takes an output path and an optional skin index, and
-switches the skin live through the public `ui_theme` parameter before rendering:
+regenerated without opening a DAW. It takes an output path, an optional skin index and a
+drawer flag, and switches the skin live through the public `ui_theme` parameter before
+rendering:
 
 ```bash
 ninja -C build generate_snapshot
-generate_snapshot assets/replicant303_ui.png 0                          # TD-3 Green
-generate_snapshot assets/replicant303_ui_obsidian_red.png 1             # Obsidian Red
+generate_snapshot assets/replicant303_ui.png 0 0                              # TD-3 Green
+generate_snapshot assets/replicant303_ui_obsidian_red.png 1 0                 # Obsidian Red
+generate_snapshot assets/replicant303_sequencer.png 0 1                       # Sequencer, green
+generate_snapshot assets/replicant303_sequencer_obsidian_red.png 1 1          # Sequencer, red
+```
+
+### Promo video
+
+The 1080p promo is generated from the real panel screenshots and the plugin's own
+acid render (`tools/make_promo.py`); the soundtrack uses the pattern sequencer
+through the actual DSP path plus a synthesized hard-techno bed:
+
+```bash
+ninja -C build render_audio_demo
+./build/render_audio_demo assets/replicant303_hardtechno_demo.wav
+python3 tools/make_promo.py
 ```
 
 ---
