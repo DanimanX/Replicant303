@@ -73,7 +73,8 @@ jobs:
             libxrender-dev \
             mesa-common-dev \
             libgl1-mesa-dev \
-            libgtk-3-dev
+            libgtk-3-dev \
+            xvfb
 
       # ------------------------------------------------------------------------
       # Configure CMake
@@ -92,6 +93,15 @@ jobs:
       - name: Build Targets
         run: |
           cmake --build build --config Release --parallel
+
+      # ------------------------------------------------------------------------
+      # Headless Regression Suite (Linux)
+      # ------------------------------------------------------------------------
+      - name: Run Regression Suite
+        if: runner.os == 'Linux'
+        run: |
+          cmake --build build --config Release --target run_tests --parallel
+          xvfb-run -a ./build/run_tests
 
       # ------------------------------------------------------------------------
       # Collect & Package Artifacts
