@@ -102,43 +102,69 @@ namespace Replicant303
         pitchBendSemi = (static_cast<float>(wheelValue - 8192) / 8192.0f) * 2.0f;
     }
 
-    void SynthEngine::handleMidiBuffer(const juce::MidiBuffer& midiMessages, int /*numSamples*/) noexcept
+    void SynthEngine::handleMidiMessage(const juce::MidiMessage& msg) noexcept
     {
-        for (const auto metadata : midiMessages)
+        if (msg.isNoteOn())
         {
-            const auto msg = metadata.getMessage();
-
-            if (msg.isNoteOn())
-            {
-                handleNoteOn(msg.getNoteNumber(), msg.getVelocity());
-            }
-            else if (msg.isNoteOff())
-            {
-                handleNoteOff(msg.getNoteNumber());
-            }
-            else if (msg.isPitchWheel())
-            {
-                handlePitchWheel(msg.getPitchWheelValue());
-            }
-            else if (msg.isAllNotesOff() || msg.isAllSoundOff())
-            {
-                reset();
-            }
+            handleNoteOn(msg.getNoteNumber(), msg.getVelocity());
+        }
+        else if (msg.isNoteOff())
+        {
+            handleNoteOff(msg.getNoteNumber());
+        }
+        else if (msg.isPitchWheel())
+        {
+            handlePitchWheel(msg.getPitchWheelValue());
+        }
+        else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+        {
+            reset();
         }
     }
 
-    void SynthEngine::processBlock(juce::AudioBuffer<float>& buffer) noexcept
+    void SynthEngine::processBlock(juce::AudioBuffer<float>& buffer,
+                                   const juce::MidiBuffer& midiMessages) noexcept
     {
-        const int numChannels = buffer.getNumChannels();
         const int numSamples = buffer.getNumSamples();
 
-        if (numChannels == 0 || numSamples == 0)
+        // A zero-length block can still carry note-offs (some hosts flush the
+        // tail this way). Always consume the events, even with nothing to render.
+        if (buffer.getNumChannels() == 0 || numSamples == 0)
+        {
+            for (const auto metadata : midiMessages)
+                handleMidiMessage(metadata.getMessage());
+
             return;
+        }
+
+        int rendered = 0;
+
+        for (const auto metadata : midiMessages)
+        {
+            const int eventSample = juce::jlimit(0, numSamples, metadata.samplePosition);
+
+            if (eventSample > rendered)
+            {
+                renderSamples(buffer, rendered, eventSample - rendered);
+                rendered = eventSample;
+            }
+
+            handleMidiMessage(metadata.getMessage());
+        }
+
+        if (rendered < numSamples)
+            renderSamples(buffer, rendered, numSamples - rendered);
+    }
+
+    void SynthEngine::renderSamples(juce::AudioBuffer<float>& buffer,
+                                    int startSample, int numSamples) noexcept
+    {
+        const int numChannels = buffer.getNumChannels();
 
         // Pitch multiplier for pitch bend
-        float bendFactor = std::pow(2.0f, pitchBendSemi / 12.0f);
+        const float bendFactor = std::pow(2.0f, pitchBendSemi / 12.0f);
 
-        for (int i = 0; i < numSamples; ++i)
+        for (int i = startSample; i < startSample + numSamples; ++i)
         {
             // 1. Analog slide smoothing (continuous capacitor charging)
             float effectiveTarget = targetPitchHz * bendFactor;
@@ -169,9 +195,7 @@ namespace Replicant303
 
             // Write to all output channels
             for (int ch = 0; ch < numChannels; ++ch)
-            {
                 buffer.setSample(ch, i, finalSample);
-            }
         }
     }
 }

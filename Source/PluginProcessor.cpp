@@ -131,6 +131,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout Replicant303AudioProcessor::
 void Replicant303AudioProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
 {
     synthEngine.prepare(sampleRate);
+
+    // The pattern clock is sample-rate dependent too: without this the
+    // sequencer kept its 44.1 kHz default and played at the wrong tempo in
+    // every 48/96 kHz session.
+    sequencer.prepare(sampleRate);
 }
 
 void Replicant303AudioProcessor::releaseResources()
@@ -203,11 +208,43 @@ void Replicant303AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     // Update real-time DSP parameters
     updateParameters();
 
-    // Process MIDI buffer
-    synthEngine.handleMidiBuffer(midiMessages, buffer.getNumSamples());
+    // -------------------------------------------------------------------------
+    // Transport / clock: the host play head supplies tempo and play state for
+    // the Host sync mode; the internal mode uses the tempo parameter.
+    // -------------------------------------------------------------------------
+    double hostBpm = 0.0;
+    bool hostPlaying = false;
 
-    // Render audio
-    synthEngine.processBlock(buffer);
+    if (auto* hostPlayHead = getPlayHead())
+    {
+        if (auto position = hostPlayHead->getPosition())
+        {
+            if (auto bpm = position->getBpm())
+                hostBpm = *bpm;
+
+            hostPlaying = position->getIsPlaying();
+        }
+    }
+
+    sequencer.setTempo(tempoParam != nullptr ? (double) tempoParam->load() : 125.0);
+    sequencer.setHostState(hostPlaying, hostBpm);
+
+    // -------------------------------------------------------------------------
+    // Merge host MIDI + on-screen keyboard + sequencer into one sample-accurate
+    // event stream. The engine splits rendering at every event boundary.
+    // -------------------------------------------------------------------------
+    // The on-screen keyboard keeps its own buffer: feeding host MIDI through
+    // MidiKeyboardState would let a host note-off clear a key the user is
+    // physically holding, leaving a stuck note in the voice stack.
+    keyboardScratch.clear();
+    keyboardState.processNextMidiBuffer(keyboardScratch, 0, buffer.getNumSamples(), true);
+
+    midiScratch.clear();
+    midiScratch.addEvents(midiMessages, 0, buffer.getNumSamples(), 0);
+    midiScratch.addEvents(keyboardScratch, 0, buffer.getNumSamples(), 0);
+    sequencer.process(buffer.getNumSamples(), midiScratch);
+
+    synthEngine.processBlock(buffer, midiScratch);
 }
 
 juce::AudioProcessorEditor* Replicant303AudioProcessor::createEditor()
@@ -218,6 +255,11 @@ juce::AudioProcessorEditor* Replicant303AudioProcessor::createEditor()
 void Replicant303AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
+
+    // Pattern bank + transport configuration live next to the parameters.
+    state.removeChild(state.getChildWithName("SEQUENCER"), nullptr);
+    state.appendChild(sequencer.toValueTree(), nullptr);
+
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -227,8 +269,16 @@ void Replicant303AudioProcessor::setStateInformation(const void* data, int sizeI
     std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
     if (xmlState != nullptr && xmlState->hasTagName(apvts.state.getType()))
     {
-        apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+        auto tree = juce::ValueTree::fromXml(*xmlState);
+        sequencer.restoreFromValueTree(tree.getChildWithName("SEQUENCER"));
+        apvts.replaceState(tree);
     }
+}
+
+bool Replicant303AudioProcessor::exportPatternToMidi(const juce::File& file, int patternIndex)
+{
+    const double bpm = tempoParam != nullptr ? (double) tempoParam->load() : 125.0;
+    return sequencer.writeMidiFile(file, patternIndex, bpm);
 }
 
 // ------------------------------------------------------------------------------

@@ -18,11 +18,11 @@ namespace Replicant303
         void prepare(double sampleRate) noexcept;
         void reset() noexcept;
 
-        // MIDI processing
-        void handleMidiBuffer(const juce::MidiBuffer& midiMessages, int numSamples) noexcept;
-
-        // Block audio rendering
-        void processBlock(juce::AudioBuffer<float>& buffer) noexcept;
+        // Block audio rendering.
+        // MIDI events are rendered sample-accurately: the block is split at
+        // every event boundary instead of applying the whole buffer up front.
+        void processBlock(juce::AudioBuffer<float>& buffer,
+                          const juce::MidiBuffer& midiMessages) noexcept;
 
         // 303 Synth Parameter Setters
         void setWaveform(Waveform wave) noexcept { osc.setWaveform(wave); }
@@ -81,9 +81,11 @@ namespace Replicant303
         int lastNoteNumber = 36; // C1 / C2
         int lastVelocity = 100;
 
+        void handleMidiMessage(const juce::MidiMessage& msg) noexcept;
         void handleNoteOn(int noteNumber, int velocity) noexcept;
         void handleNoteOff(int noteNumber) noexcept;
         void handlePitchWheel(int wheelValue) noexcept;
+        void renderSamples(juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
         void updateSlideCoefficient() noexcept;
     };
 }

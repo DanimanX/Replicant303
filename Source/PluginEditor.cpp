@@ -89,7 +89,17 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
 
     setupKeyboardLayout();
 
-    setSize(1080, 590);
+    // -------------------------------------------------------------------------
+    // Slide-down pattern drawer: hidden under the panel until requested.
+    // -------------------------------------------------------------------------
+    patternDrawer = std::make_unique<PatternDrawer>(audioProcessor);
+    patternDrawer->onCloseRequested = [this]() { setPatternDrawerOpen(false); };
+    addChildComponent(*patternDrawer);
+    patternDrawer->setBounds(0, Replicant303::Layout::panelHeight,
+                             Replicant303::Layout::panelWidth, PatternDrawer::drawerHeight);
+
+    setWantsKeyboardFocus(true);
+    setSize(Replicant303::Layout::panelWidth, Replicant303::Layout::panelHeight);
     startTimerHz(30); // 30 FPS reactive LEDs
 }
 
@@ -97,6 +107,7 @@ Replicant303AudioProcessorEditor::~Replicant303AudioProcessorEditor()
 {
     Replicant303::ThemeManager::getInstance().removeChangeListener(this);
     stopTimer();
+    patternDrawer.reset();
     setLookAndFeel(nullptr);
 }
 
@@ -106,6 +117,10 @@ void Replicant303AudioProcessorEditor::changeListenerCallback(juce::ChangeBroadc
         return;
 
     customLookAndFeel.applyTheme();
+
+    if (patternDrawer != nullptr)
+        patternDrawer->repaint();
+
     repaint();
 }
 
@@ -135,14 +150,14 @@ void Replicant303AudioProcessorEditor::setupKeyboardLayout()
     functionButtons.clear();
 
     // 13-note Tactile Keyboard (C2 to C3, MIDI 36 to 48)
-    const float whiteKeyW = 38.0f;
-    const float whiteKeyH = 88.0f;
-    const float blackKeyW = 28.0f;
-    const float blackKeyH = 56.0f;
-    const float startX = 202.0f;
-    const float whiteKeyY = 412.0f;
-    const float blackKeyY = 306.0f;
-    const float stride = 46.0f;
+    const float whiteKeyW = Replicant303::Layout::Keybed::whiteKeyW;
+    const float whiteKeyH = Replicant303::Layout::Keybed::whiteKeyH;
+    const float blackKeyW = Replicant303::Layout::Keybed::blackKeyW;
+    const float blackKeyH = Replicant303::Layout::Keybed::blackKeyH;
+    const float startX = Replicant303::Layout::Keybed::startX;
+    const float whiteKeyY = Replicant303::Layout::Keybed::whiteKeyY;
+    const float blackKeyY = Replicant303::Layout::Keybed::blackKeyY;
+    const float stride = Replicant303::Layout::Keybed::stride;
 
     // 8 White Keys: C, D, E, F, G, A, B, high C
     int whiteNotes[] = { 36, 38, 40, 41, 43, 45, 47, 48 };
@@ -216,6 +231,17 @@ void Replicant303AudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
 {
     auto pos = e.position;
 
+    // 0. Header tab that opens / closes the pattern drawer.
+    const juce::Rectangle<float> seqTab (Replicant303::Layout::seqTabX,
+                                        Replicant303::Layout::seqTabY,
+                                        Replicant303::Layout::seqTabW,
+                                        Replicant303::Layout::seqTabH);
+    if (seqTab.contains(pos))
+    {
+        setPatternDrawerOpen(!drawerOpen);
+        return;
+    }
+
     // 1. Check sharp piano keys first (they layer over white keys)
     for (auto& key : pianoKeys)
     {
@@ -223,9 +249,7 @@ void Replicant303AudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
         {
             key.isPressed = true;
             activePlayedKey = key.midiNote;
-            juce::MidiBuffer buf;
-            buf.addEvent(juce::MidiMessage::noteOn(1, key.midiNote, (juce::uint8)115), 0);
-            audioProcessor.getSynthEngine().handleMidiBuffer(buf, 1);
+            audioProcessor.getKeyboardState().noteOn(1, key.midiNote, 0.9f);
             repaint();
             return;
         }
@@ -238,9 +262,7 @@ void Replicant303AudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
         {
             key.isPressed = true;
             activePlayedKey = key.midiNote;
-            juce::MidiBuffer buf;
-            buf.addEvent(juce::MidiMessage::noteOn(1, key.midiNote, (juce::uint8)115), 0);
-            audioProcessor.getSynthEngine().handleMidiBuffer(buf, 1);
+            audioProcessor.getKeyboardState().noteOn(1, key.midiNote, 0.9f);
             repaint();
             return;
         }
@@ -249,12 +271,34 @@ void Replicant303AudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
     // 3. Check function buttons
     for (auto& btn : functionButtons)
     {
-        if (btn.bounds.contains(pos))
+        if (! btn.bounds.contains(pos))
+            continue;
+
+        // The hardware sequencer buttons are wired to the real transport and
+        // pattern bank instead of being decorative.
+        if (btn.label == "START / STOP")
         {
-            btn.isLit = !btn.isLit;
-            repaint();
-            return;
+            auto& sequencer = audioProcessor.getSequencer();
+            if (sequencer.isTransportArmed())
+                sequencer.stop();
+            else
+                sequencer.start();
         }
+        else if (btn.label == "WRITE / NEXT")
+        {
+            setPatternDrawerOpen(! drawerOpen);
+        }
+        else if (btn.label == "BACK")
+        {
+            audioProcessor.getSequencer().previousPattern();
+        }
+        else
+        {
+            btn.isLit = ! btn.isLit;
+        }
+
+        repaint();
+        return;
     }
 }
 
@@ -262,9 +306,7 @@ void Replicant303AudioProcessorEditor::mouseUp(const juce::MouseEvent& /*e*/)
 {
     if (activePlayedKey != -1)
     {
-        juce::MidiBuffer buf;
-        buf.addEvent(juce::MidiMessage::noteOff(1, activePlayedKey, (juce::uint8)0), 0);
-        audioProcessor.getSynthEngine().handleMidiBuffer(buf, 1);
+        audioProcessor.getKeyboardState().noteOff(1, activePlayedKey, 0.0f);
 
         for (auto& key : pianoKeys)
             key.isPressed = false;
@@ -276,7 +318,36 @@ void Replicant303AudioProcessorEditor::mouseUp(const juce::MouseEvent& /*e*/)
 
 void Replicant303AudioProcessorEditor::timerCallback()
 {
+    // --- drawer animation -----------------------------------------------------
+    if (drawerAnimating)
+    {
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        const float t = juce::jlimit(0.0f, 1.0f, (float) ((now - drawerAnimStartMs) / 220.0));
+        const float eased = 1.0f - std::pow (1.0f - t, 3.0f);
+        const float target = drawerOpen ? 1.0f : 0.0f;
+
+        drawerProgress = drawerAnimFrom + (target - drawerAnimFrom) * eased;
+        applyDrawerProgress();
+        repaint ((int) Replicant303::Layout::seqTabX, (int) Replicant303::Layout::seqTabY,
+                 (int) Replicant303::Layout::seqTabW, (int) Replicant303::Layout::seqTabH);
+
+        if (t >= 1.0f)
+        {
+            drawerAnimating = false;
+            drawerProgress = target;
+            applyDrawerProgress();
+            startTimerHz (30);
+        }
+    }
+
+    if (patternDrawer != nullptr && drawerProgress > 0.0f)
+        patternDrawer->refresh();
+
+    syncPatternGroup();
+
+    // --- live hardware telemetry ---------------------------------------------
     auto& engine = audioProcessor.getSynthEngine();
+    auto& sequencer = audioProcessor.getSequencer();
     bool slideOn = engine.isSlideActive();
     bool accentOn = engine.isAccentActive();
     int lastNote = engine.getLastMidiNote();
@@ -285,18 +356,119 @@ void Replicant303AudioProcessorEditor::timerCallback()
     {
         if (btn.label == "SLIDE")  btn.isLit = slideOn;
         if (btn.label == "ACCENT") btn.isLit = accentOn;
+        if (btn.label == "START / STOP") btn.isLit = sequencer.isPlaying();
     }
 
     for (auto& key : pianoKeys)
+        key.isPressed = (key.isPressed || key.midiNote == (lastNote % 12 + 36));
+
+    repaint (495, 8, 143, 40);
+    repaint (0, 245, getWidth(), Replicant303::Layout::panelHeight - 245);
+}
+
+void Replicant303AudioProcessorEditor::syncPatternGroup()
+{
+    auto* groupValue = audioProcessor.apvts.getRawParameterValue("pattern_group");
+    if (groupValue == nullptr)
+        return;
+
+    auto& sequencer = audioProcessor.getSequencer();
+    const int group = juce::jlimit(0, 3, juce::roundToInt(groupValue->load()));
+    const int pattern = sequencer.getCurrentPattern();
+
+    if (group != lastPatternGroup)
     {
-        if (key.midiNote == (lastNote % 12 + 36) || key.isPressed)
-            key.isPressed = true;
-        else
-            key.isPressed = false;
+        // The hardware TRACK knob selects a group of two patterns.
+        lastPatternGroup = group;
+        sequencer.setCurrentPattern(group * 2);
+        return;
     }
 
-    repaint(495, 8, 143, 40);
-    repaint(0, 245, getWidth(), getHeight() - 245);
+    if (pattern / 2 != group)
+    {
+        lastPatternGroup = pattern / 2;
+
+        if (auto* param = audioProcessor.apvts.getParameter("pattern_group"))
+            param->setValueNotifyingHost(param->convertTo0to1((float) (pattern / 2)));
+    }
+}
+
+//==============================================================================
+void Replicant303AudioProcessorEditor::setPatternDrawerOpen (bool shouldBeOpen, bool animate)
+{
+    drawerOpen = shouldBeOpen;
+
+    if (! animate)
+    {
+        drawerAnimating = false;
+        drawerProgress = shouldBeOpen ? 1.0f : 0.0f;
+        applyDrawerProgress();
+        startTimerHz (30);
+        repaint();
+        return;
+    }
+
+    drawerAnimFrom = drawerProgress;
+    drawerAnimStartMs = juce::Time::getMillisecondCounterHiRes();
+    drawerAnimating = true;
+
+    if (patternDrawer != nullptr)
+    {
+        patternDrawer->setVisible (true);
+        patternDrawer->setRevealOffset ((1.0f - drawerProgress) * (float) PatternDrawer::drawerHeight);
+    }
+
+    // Resize once up front; the drawer itself animates inside that space, so
+    // the host is not asked to resize the plugin window on every frame.
+    if (shouldBeOpen)
+        setSize (Replicant303::Layout::panelWidth,
+                 Replicant303::Layout::panelHeight + PatternDrawer::drawerHeight);
+
+    startTimerHz (60);
+    repaint();
+}
+
+void Replicant303AudioProcessorEditor::applyDrawerProgress()
+{
+    const bool fullyOpen = drawerProgress >= 0.999f;
+    const bool fullyClosed = drawerProgress <= 0.001f;
+
+    const int height = fullyOpen ? PatternDrawer::drawerHeight
+                                 : (fullyClosed ? 0 : PatternDrawer::drawerHeight);
+
+    setSize (Replicant303::Layout::panelWidth,
+             Replicant303::Layout::panelHeight + height);
+
+    if (patternDrawer != nullptr)
+    {
+        patternDrawer->setBounds (0, Replicant303::Layout::panelHeight,
+                                  getWidth(), PatternDrawer::drawerHeight);
+        patternDrawer->setRevealOffset ((1.0f - drawerProgress) * (float) PatternDrawer::drawerHeight);
+        patternDrawer->setVisible (! fullyClosed);
+    }
+}
+
+bool Replicant303AudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::spaceKey)
+    {
+        auto& sequencer = audioProcessor.getSequencer();
+        if (sequencer.isTransportArmed())
+            sequencer.stop();
+        else
+            sequencer.start();
+
+        repaint();
+        return true;
+    }
+
+    if (key == juce::KeyPress::escapeKey && drawerOpen)
+    {
+        setPatternDrawerOpen (false);
+        return true;
+    }
+
+    return false;
 }
 
 // -----------------------------------------------------------------------------
@@ -603,8 +775,8 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
     g.setFont(Replicant303::uiFont(11.5f, juce::Font::plain));
     g.drawText("Computer Controlled", 265, 20, 160, 16, juce::Justification::centredLeft);
 
-    g.setFont(Replicant303::uiFont(13.0f, juce::Font::bold));
-    g.drawText("Analog Bass Line Synthesizer", getWidth() - 310, 16, 270, 20, juce::Justification::centredRight);
+    g.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
+    g.drawText("ANALOG BASS LINE", getWidth() - 166, 18, 146, 16, juce::Justification::centredRight);
 
     // 2. 5 Patch Jacks (Center Top)
     float jackY = 78.0f;
@@ -1184,6 +1356,64 @@ void Replicant303AudioProcessorEditor::drawDigitalTempoClock(juce::Graphics& g)
     g.fillPath(glassGlare);
 }
 
+void Replicant303AudioProcessorEditor::drawSequencerTab(juce::Graphics& g)
+{
+    const juce::Rectangle<float> tab (Replicant303::Layout::seqTabX,
+                                      Replicant303::Layout::seqTabY,
+                                      Replicant303::Layout::seqTabW,
+                                      Replicant303::Layout::seqTabH);
+
+    // Recessed plate matching the skin selector beside it.
+    g.setColour(juce::Colours::black.withAlpha(0.45f));
+    g.fillRoundedRectangle(tab.translated(0.0f, 1.5f), 3.0f);
+
+    juce::ColourGradient grad(theme().pcbDark.brighter(0.10f), tab.getX(), tab.getY(),
+                              theme().pcbDark.darker(0.35f), tab.getX(), tab.getBottom(), false);
+    g.setGradientFill(grad);
+    g.fillRoundedRectangle(tab, 3.0f);
+
+    g.setColour(theme().silkscreen.withAlpha(drawerOpen ? 0.95f : 0.60f));
+    g.drawRoundedRectangle(tab, 3.0f, drawerOpen ? 1.6f : 1.1f);
+
+    // Status LED.
+    auto led = juce::Rectangle<float>(tab.getX() + 10.0f, tab.getCentreY() - 3.0f, 6.0f, 6.0f);
+    g.setColour(theme().ledBezelDark);
+    g.drawEllipse(led.expanded(1.0f), 1.0f);
+
+    if (drawerOpen)
+    {
+        g.setColour(theme().ledBright.withAlpha(0.40f));
+        g.fillEllipse(led.expanded(3.5f));
+        g.setColour(theme().ledBright);
+        g.fillEllipse(led);
+    }
+    else
+    {
+        g.setColour(theme().ledDark);
+        g.fillEllipse(led);
+    }
+
+    g.setColour(theme().silkscreen);
+    g.setFont(Replicant303::uiFont(10.0f, juce::Font::bold));
+    g.drawText("PATTERN", tab.withTrimmedLeft(22.0f).withTrimmedRight(20.0f),
+               juce::Justification::centredLeft);
+
+    // Chevron: down = opens, up = closes.
+    juce::Path chevron;
+    const float cx = tab.getRight() - 15.0f;
+    const float cy = tab.getCentreY();
+    if (drawerOpen)
+    {
+        chevron.addTriangle(cx - 4.5f, cy + 2.0f, cx + 4.5f, cy + 2.0f, cx, cy - 3.0f);
+    }
+    else
+    {
+        chevron.addTriangle(cx - 4.5f, cy - 2.0f, cx + 4.5f, cy - 2.0f, cx, cy + 3.0f);
+    }
+    g.setColour(theme().silkscreen);
+    g.fillPath(chevron);
+}
+
 void Replicant303AudioProcessorEditor::paint(juce::Graphics& g)
 {
     // Layer 1: Procedural 3D PCB Underlay with ICs, Capacitors, Resistors, Copper Traces & Vias
@@ -1194,6 +1424,9 @@ void Replicant303AudioProcessorEditor::paint(juce::Graphics& g)
 
     // Layer 3: Crisp Silkscreen Markings, Jack Sockets, Labels & Embossed Logo
     drawSilkscreenGraphics(g);
+
+    // Header tab that slides the pattern drawer in and out.
+    drawSequencerTab(g);
 
     // 80s Digital Red LED Tempo Clock (Top Center)
     drawDigitalTempoClock(g);
@@ -1259,6 +1492,9 @@ void Replicant303AudioProcessorEditor::resized()
     // Distortion On/Off Switch (Inside Distortion Box, directly under distortion knobs!)
     distActiveSwitch.setBounds(800, 168, 48, 24);
 
-    // Keyboard & Sequencer Layout
-    setupKeyboardLayout();
+    // The keyboard layout is static: rebuilding it here used to clear the
+    // pressed-key and LED state every time the window was resized.
+    if (patternDrawer != nullptr)
+        patternDrawer->setBounds (0, Replicant303::Layout::panelHeight,
+                                  getWidth(), PatternDrawer::drawerHeight);
 }

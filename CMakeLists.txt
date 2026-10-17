@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Replicant303 VERSION 1.0.0 LANGUAGES C CXX)
+project(Replicant303 VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,6 +20,52 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(JUCE)
+
+# ------------------------------------------------------------------------------
+# Source files shared by the plugin, the docs renderer and the test suite.
+# Declared once so the three targets can never drift apart.
+# ------------------------------------------------------------------------------
+set(R303_SOURCES
+    Source/PluginProcessor.cpp
+    Source/PluginProcessor.h
+    Source/PluginEditor.cpp
+    Source/PluginEditor.h
+
+    # DSP engine
+    Source/DSP/Common303.h
+    Source/DSP/Oscillator303.h
+    Source/DSP/Oscillator303.cpp
+    Source/DSP/DiodeLadderFilter.h
+    Source/DSP/DiodeLadderFilter.cpp
+    Source/DSP/Envelope303.h
+    Source/DSP/DistortionUnit.h
+    Source/DSP/DistortionUnit.cpp
+    Source/DSP/SynthEngine.h
+    Source/DSP/SynthEngine.cpp
+    Source/DSP/Pattern.h
+    Source/DSP/PatternSequencer.h
+    Source/DSP/PatternSequencer.cpp
+
+    # GUI
+    Source/GUI/Replicant303LookAndFeel.h
+    Source/GUI/Replicant303LookAndFeel.cpp
+    Source/GUI/Replicant303Theme.h
+    Source/GUI/Replicant303Theme.cpp
+    Source/GUI/PanelLayout.h
+    Source/GUI/PatternDrawer.h
+    Source/GUI/PatternDrawer.cpp
+)
+
+set(R303_INCLUDE_DIRS Source Source/DSP Source/GUI)
+set(R303_JUCE_LIBS
+    juce::juce_audio_utils
+    juce::juce_audio_processors
+    juce::juce_dsp
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_warning_flags
+)
 
 # ------------------------------------------------------------------------------
 # Formats: VST3, AU (macOS only), and Standalone
@@ -44,90 +90,40 @@ juce_add_plugin(Replicant303
     PLUGIN_CODE R303
     FORMATS ${PLUGIN_FORMATS}
     PRODUCT_NAME "Replicant303"
-    DESCRIPTION "Virtual Analog TB-303 Synthesizer with Multi-Distortion Engine"
+    DESCRIPTION "Virtual Analog TB-303 Synthesizer with Pattern Sequencer and Multi-Distortion Engine"
     BUNDLE_ID "com.danimanx.replicant303"
 )
 
-# ------------------------------------------------------------------------------
-# Source Files
-# ------------------------------------------------------------------------------
-target_sources(Replicant303 PRIVATE
-    Source/PluginProcessor.cpp
-    Source/PluginProcessor.h
-    Source/PluginEditor.cpp
-    Source/PluginEditor.h
-    
-    # DSP Engine
-    Source/DSP/Common303.h
-    Source/DSP/Oscillator303.h
-    Source/DSP/Oscillator303.cpp
-    Source/DSP/DiodeLadderFilter.h
-    Source/DSP/DiodeLadderFilter.cpp
-    Source/DSP/Envelope303.h
-    Source/DSP/DistortionUnit.h
-    Source/DSP/DistortionUnit.cpp
-    Source/DSP/SynthEngine.h
-    Source/DSP/SynthEngine.cpp
+target_sources(Replicant303 PRIVATE ${R303_SOURCES})
 
-    # GUI Look & Feel
-    Source/GUI/Replicant303LookAndFeel.h
-    Source/GUI/Replicant303LookAndFeel.cpp
-    Source/GUI/Replicant303Theme.h
-    Source/GUI/Replicant303Theme.cpp
-)
-
-# ------------------------------------------------------------------------------
-# Compilation & Link Settings
-# ------------------------------------------------------------------------------
 target_compile_definitions(Replicant303 PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
-target_include_directories(Replicant303 PRIVATE
-    Source
-    Source/DSP
-    Source/GUI
-)
-
-target_link_libraries(Replicant303 PRIVATE
-    juce::juce_audio_utils
-    juce::juce_audio_processors
-    juce::juce_dsp
-    juce::juce_gui_basics
-    juce::juce_gui_extra
-    juce::juce_recommended_config_flags
-    juce::juce_recommended_warning_flags
-)
+target_include_directories(Replicant303 PRIVATE ${R303_INCLUDE_DIRS})
+target_link_libraries(Replicant303 PRIVATE ${R303_JUCE_LIBS})
 
 # ------------------------------------------------------------------------------
-# UI Snapshot Generator (Internal tool for docs & README preview)
+# Internal tools (excluded from the default build)
 # ------------------------------------------------------------------------------
-add_executable(generate_snapshot EXCLUDE_FROM_ALL
-    tools/generate_snapshot.cpp
-    Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp
-    Source/DSP/Oscillator303.cpp
-    Source/DSP/DiodeLadderFilter.cpp
-    Source/DSP/DistortionUnit.cpp
-    Source/DSP/SynthEngine.cpp
-    Source/GUI/Replicant303LookAndFeel.cpp
-    Source/GUI/Replicant303Theme.cpp
-)
-target_include_directories(generate_snapshot PRIVATE Source Source/DSP Source/GUI)
-target_compile_definitions(generate_snapshot PRIVATE
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
-    JUCE_MODAL_LOOPS_PERMITTED=1   # lets the tool pump the queue after a live skin switch
-)
-target_link_libraries(generate_snapshot PRIVATE
-    juce::juce_audio_utils
-    juce::juce_audio_processors
-    juce::juce_dsp
-    juce::juce_gui_basics
-    juce::juce_gui_extra
-    juce::juce_recommended_config_flags
-    juce::juce_recommended_warning_flags
-)
+function(r303_add_tool target source)
+    add_executable(${target} EXCLUDE_FROM_ALL ${source} ${R303_SOURCES})
+    target_include_directories(${target} PRIVATE ${R303_INCLUDE_DIRS})
+    target_compile_definitions(${target} PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_MODAL_LOOPS_PERMITTED=1
+    )
+    target_link_libraries(${target} PRIVATE ${R303_JUCE_LIBS})
+endfunction()
 
+# Renders the editor off-screen to a PNG for the README previews.
+r303_add_tool(generate_snapshot tools/generate_snapshot.cpp)
+
+# Headless regression suite (patterns, clock, MIDI export, DSP, state).
+r303_add_tool(run_tests tools/run_tests.cpp)
+
+# Renders the acid demo used by the promo video through the real plugin DSP.
+r303_add_tool(render_audio_demo tools/render_audio_demo.cpp)

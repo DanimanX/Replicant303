@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "DSP/SynthEngine.h"
+#include "DSP/PatternSequencer.h"
 
 class Replicant303AudioProcessor : public juce::AudioProcessor
 {
@@ -46,8 +47,26 @@ public:
     // Access to synth engine for UI telemetry
     Replicant303::SynthEngine& getSynthEngine() noexcept { return synthEngine; }
 
+    // Pattern sequencer (pattern bank, clock, MIDI export)
+    Replicant303::PatternSequencer& getSequencer() noexcept { return sequencer; }
+    const Replicant303::PatternSequencer& getSequencer() const noexcept { return sequencer; }
+
+    /** Thread-safe note source for the on-screen keyboard, consumed on the
+        audio thread. Replaces the old direct engine calls from the editor. */
+    juce::MidiKeyboardState& getKeyboardState() noexcept { return keyboardState; }
+
+    /** Writes a pattern from the bank to a Standard MIDI File. */
+    bool exportPatternToMidi(const juce::File& file, int patternIndex);
+
 private:
     Replicant303::SynthEngine synthEngine;
+    Replicant303::PatternSequencer sequencer;
+    juce::MidiKeyboardState keyboardState;
+
+    /** Reused per block so the audio thread does not allocate a fresh MIDI
+        buffer every callback. clear() keeps the capacity. */
+    juce::MidiBuffer midiScratch;
+    juce::MidiBuffer keyboardScratch;
 
     // Cached parameter pointers for high performance
     std::atomic<float>* waveformParam = nullptr;

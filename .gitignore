@@ -9,6 +9,10 @@ bin/
 _deps/
 .cache/
 
+# Local agent workspace / Python caches
+.codewhale/
+__pycache__/
+
 # IDE files
 .vscode/
 .idea/

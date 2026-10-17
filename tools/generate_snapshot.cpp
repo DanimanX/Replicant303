@@ -5,7 +5,7 @@
 // Internal tool: renders the plugin editor off-screen to a PNG so the panel can
 // be reviewed without opening a host. Used for the README preview.
 //
-//   generate_snapshot [output.png] [themeIndex]
+//   generate_snapshot [output.png] [themeIndex] [drawerOpen]
 //
 // The editor is created with whatever skin is stored in the processor, and when
 // themeIndex is supplied the skin is then switched *live* through the public
@@ -56,6 +56,38 @@ int main(int argc, char* argv[])
                 return 2;
             }
         }
+    }
+
+    // Optionally open the pattern drawer (third argument) so the sequencer can
+    // be reviewed in the README without opening a host.
+    if (argc > 3)
+    {
+        auto* concrete = dynamic_cast<Replicant303AudioProcessorEditor*> (editor.get());
+        if (concrete == nullptr)
+        {
+            std::cerr << "[ERROR] Editor is not a Replicant303AudioProcessorEditor" << std::endl;
+            return 3;
+        }
+
+        const int mode = juce::String (argv[3]).getIntValue();
+
+        if (mode == 2)
+        {
+            // Half-way through the slide animation, to review the reveal.
+            concrete->setPatternDrawerOpen (true, true);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (70);
+            std::cout << "[INFO] Pattern drawer: mid-animation, height "
+                      << editor->getHeight() << std::endl;
+        }
+        else
+        {
+            const bool open = mode != 0;
+            concrete->setPatternDrawerOpen (open, false);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+
+            std::cout << "[INFO] Pattern drawer: " << (open ? "open" : "closed") << std::endl;
+        }
+
     }
 
     juce::Image img(juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);

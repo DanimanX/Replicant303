@@ -4,6 +4,8 @@
 #include "PluginProcessor.h"
 #include "GUI/Replicant303LookAndFeel.h"
 #include "GUI/Replicant303Theme.h"
+#include "GUI/PanelLayout.h"
+#include "GUI/PatternDrawer.h"
 
 class Replicant303AudioProcessorEditor : public juce::AudioProcessorEditor,
                                          private juce::Timer,
@@ -17,6 +19,12 @@ public:
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
+    bool keyPressed(const juce::KeyPress& key) override;
+
+    /** Opens or closes the slide-down pattern editor. `animate = false` is
+        used by the offline snapshot tool. */
+    void setPatternDrawerOpen(bool shouldBeOpen, bool animate = true);
+    bool isPatternDrawerOpen() const noexcept { return drawerOpen; }
 
 private:
     void timerCallback() override;
@@ -122,6 +130,22 @@ private:
     void drawResistor(juce::Graphics& g, float x1, float y1, float x2, float y2, juce::Colour b1, juce::Colour b2, juce::Colour b3);
     void drawDigitalTempoClock(juce::Graphics& g);
     void draw7SegmentDigit(juce::Graphics& g, float x, float y, float w, float h, char digit);
+    void drawSequencerTab(juce::Graphics& g);
+
+    //==========================================================================
+    // Slide-down drawer state
+    std::unique_ptr<PatternDrawer> patternDrawer;
+    bool drawerOpen = false;
+    bool drawerAnimating = false;
+    float drawerProgress = 0.0f;
+    float drawerAnimFrom = 0.0f;
+    double drawerAnimStartMs = 0.0;
+    void applyDrawerProgress();
+
+    /** Last pattern group seen by the TRACK knob, so the knob and the drawer's
+        A–H slots stay in sync without fighting each other. */
+    int lastPatternGroup = -1;
+    void syncPatternGroup();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Replicant303AudioProcessorEditor)
 };
