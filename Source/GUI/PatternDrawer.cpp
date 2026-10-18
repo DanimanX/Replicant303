@@ -62,6 +62,21 @@ void PatternDrawer::resized()
         actionButtons[(size_t) i] = { actionArea.getX() + i * (actionW + 8.0f),
                                       actionArea.getY(), actionW, actionArea.getHeight() };
 
+    // Preset vault: 8 pages x 8 slots = the 64 presets of the current letter.
+    presetArea = { 12.0f, 396.0f, w - 24.0f, 32.0f };
+    presetNameArea = { 552.0f, 398.0f, 228.0f, 28.0f };
+
+    for (int i = 0; i < 8; ++i)
+    {
+        presetPageButtons[(size_t) i] = { 96.0f + i * 25.0f, 400.0f, 22.0f, 24.0f };
+        presetSlotButtons[(size_t) i] = { 304.0f + i * 30.0f, 400.0f, 28.0f, 24.0f };
+    }
+
+    presetGenButton    = { 788.0f, 400.0f,  54.0f, 24.0f };
+    presetStoreButton  = { 848.0f, 400.0f,  58.0f, 24.0f };
+    presetImportButton = { 912.0f, 400.0f,  70.0f, 24.0f };
+    presetExportButton = { 988.0f, 400.0f,  70.0f, 24.0f };
+
     const float ix = inspectorArea.getX();
     const float iw = inspectorArea.getWidth();
 
@@ -86,15 +101,41 @@ void PatternDrawer::refresh()
     if (auto* p = processor.apvts.getRawParameterValue ("tempo"))
         tempo = p->load();
 
-    if (step != lastStep || pattern != lastPattern || running != lastRunning
+    bool needsRepaint = false;
+
+    const bool patternChanged = (pattern != lastPattern);
+
+    if (patternChanged)
+    {
+        // The active letter owns the visible preset page/slot. Switching
+        // patterns from the hardware buttons or the TRACK knob must update
+        // the vault too.
+        const int index = processor.getPresetBank().getSelectedSlot (pattern);
+        presetPage = index / 8;
+        presetSlot = index % 8;
+        needsRepaint = true;
+    }
+
+    if (step != lastStep || patternChanged || running != lastRunning
         || ! juce::approximatelyEqual (tempo, lastTempo))
     {
         lastStep = step;
         lastPattern = pattern;
         lastRunning = running;
         lastTempo = tempo;
-        repaint();
+        needsRepaint = true;
     }
+
+    if (presetStatusUntilMs > 0.0
+        && juce::Time::getMillisecondCounterHiRes() >= presetStatusUntilMs)
+    {
+        presetStatus.clear();
+        presetStatusUntilMs = 0.0;
+        needsRepaint = true;
+    }
+
+    if (needsRepaint)
+        repaint();
 }
 
 //==============================================================================
@@ -135,6 +176,7 @@ void PatternDrawer::paint (juce::Graphics& g)
     drawLanes (g);
     drawInspector (g);
     drawActions (g);
+    drawPresetVault (g);
 }
 
 void PatternDrawer::drawBackground (juce::Graphics& g)
@@ -605,6 +647,107 @@ void PatternDrawer::drawActions (juce::Graphics& g)
                            i == 2 && hasClipboard, true);
 }
 
+void PatternDrawer::drawPresetVault (juce::Graphics& g)
+{
+    const auto& t = theme();
+    const int bank = currentBank();
+    const int index = currentPresetIndex();
+    const int loadedIndex = processor.getPresetBank().getSelectedSlot (bank);
+    const bool selectionLoaded = (index == loadedIndex);
+    const auto& preset = processor.getPresetBank().getPreset (bank, index);
+
+    // Recessed smoked-acrylic strip under the pattern actions.
+    g.setColour (juce::Colours::black.withAlpha (0.30f));
+    g.fillRoundedRectangle (presetArea, 4.0f);
+    g.setColour (t.silkscreen.withAlpha (0.12f));
+    g.drawRoundedRectangle (presetArea, 4.0f, 1.0f);
+
+    g.setColour (t.silkscreen.withAlpha (0.55f));
+    g.setFont (Replicant303::uiFont (7.0f, juce::Font::bold));
+    g.drawText ("PRESET", 12, 396, 46, 16, juce::Justification::centredLeft);
+
+    g.setColour (t.ledBright.withAlpha (0.90f));
+    g.setFont (Replicant303::uiFont (7.0f, juce::Font::bold));
+    g.drawText ("BANK " + Replicant303::PresetBank::getBankLetter (bank),
+                12, 408, 46, 16, juce::Justification::centredLeft);
+
+    g.setColour (t.silkscreen.withAlpha (0.55f));
+    g.setFont (Replicant303::uiFont (7.5f, juce::Font::bold));
+    g.drawText ("PAGE", 64, 396, 30, 32, juce::Justification::centredLeft);
+
+    for (int i = 0; i < 8; ++i)
+    {
+        drawPresetKey (g, presetPageButtons[(size_t) i],
+                       juce::String (i + 1), i == presetPage);
+        drawPresetKey (g, presetSlotButtons[(size_t) i],
+                       juce::String (i + 1).paddedLeft ('0', 2),
+                       selectionLoaded && i == presetSlot);
+    }
+
+    // Name / status window.
+    g.setColour (juce::Colours::black.withAlpha (0.55f));
+    g.fillRoundedRectangle (presetNameArea, 3.0f);
+    g.setColour (t.silkscreen.withAlpha (0.25f));
+    g.drawRoundedRectangle (presetNameArea, 3.0f, 1.0f);
+
+    const auto textArea = presetNameArea.reduced (8.0f, 0.0f).toNearestInt();
+
+    if (presetStatus.isNotEmpty())
+    {
+        g.setColour (t.displayLit);
+        g.setFont (Replicant303::uiFont (9.0f, juce::Font::bold));
+        g.drawFittedText (presetStatus, textArea, juce::Justification::centredLeft, 1, 0.82f);
+    }
+    else if (! selectionLoaded)
+    {
+        // Changing page browses without loading: the user has not committed to
+        // a slot yet, so the window asks for one instead of lying about it.
+        g.setColour (t.silkscreen.withAlpha (0.70f));
+        g.setFont (Replicant303::uiFont (9.0f, juce::Font::bold));
+        g.drawFittedText ("PAGE " + juce::String (presetPage + 1)
+                              + "  /  SELECT 01-08",
+                          textArea, juce::Justification::centredLeft, 1, 0.82f);
+    }
+    else
+    {
+        const auto label = Replicant303::PresetBank::getBankLetter (bank)
+                           + " " + juce::String (index + 1).paddedLeft ('0', 2)
+                           + "  " + preset.name;
+
+        g.setColour (t.ledBright);
+        g.setFont (Replicant303::uiFont (10.0f, juce::Font::bold));
+        g.drawFittedText (label, textArea, juce::Justification::centredLeft, 1, 0.82f);
+    }
+
+    drawTactileButton (g, presetGenButton,    "GEN",    false, true);
+    drawTactileButton (g, presetStoreButton,  "STORE",  false, true);
+    drawTactileButton (g, presetImportButton, "IMPORT", false, true);
+    drawTactileButton (g, presetExportButton, "EXPORT", false, true);
+}
+
+void PatternDrawer::drawPresetKey (juce::Graphics& g, juce::Rectangle<float> r,
+                                   const juce::String& text, bool active)
+{
+    const auto& t = theme();
+
+    g.setColour (juce::Colours::black.withAlpha (0.50f));
+    g.fillRoundedRectangle (r.translated (0.0f, 1.5f), 2.0f);
+
+    const juce::Colour face = active ? t.buttonFaceLit : t.buttonFaceIdle.darker (0.68f);
+    juce::ColourGradient grad (face.brighter (0.10f), r.getX(), r.getY(),
+                               face.darker (0.42f), r.getX(), r.getBottom(), false);
+    g.setGradientFill (grad);
+    g.fillRoundedRectangle (r, 2.0f);
+
+    g.setColour (active ? t.ledBright : t.silkscreen.withAlpha (0.28f));
+    g.drawRoundedRectangle (r, 2.0f, active ? 1.4f : 1.0f);
+
+    g.setColour (active ? juce::Colours::black.withAlpha (0.88f)
+                        : t.silkscreen.withAlpha (0.80f));
+    g.setFont (Replicant303::uiFont (8.5f, juce::Font::bold));
+    g.drawText (text, r, juce::Justification::centred);
+}
+
 //==============================================================================
 void PatternDrawer::drawTactileButton (juce::Graphics& g, juce::Rectangle<float> r,
                                        const juce::String& text, bool lit, bool compact)
@@ -776,6 +919,27 @@ void PatternDrawer::mouseDown (const juce::MouseEvent& e)
     if (inspAccent.contains (p)) { toggleFlag (selectedStep, 1); repaint(); return; }
     if (inspSlide.contains (p))  { toggleFlag (selectedStep, 2); repaint(); return; }
 
+    // Preset vault row.
+    for (int i = 0; i < 8; ++i)
+    {
+        if (presetPageButtons[(size_t) i].contains (p))
+        {
+            choosePresetPage (i);
+            return;
+        }
+
+        if (presetSlotButtons[(size_t) i].contains (p))
+        {
+            loadPreset (presetPage * 8 + i);
+            return;
+        }
+    }
+
+    if (presetGenButton.contains (p))    { generatePreset(); return; }
+    if (presetStoreButton.contains (p))  { storePreset(); return; }
+    if (presetImportButton.contains (p)) { importPreset(); return; }
+    if (presetExportButton.contains (p)) { exportPreset(); return; }
+
     for (int i = 0; i < kNumActions; ++i)
     {
         if (! actionButtons[(size_t) i].contains (p))
@@ -914,8 +1078,8 @@ void PatternDrawer::exportCurrentPattern()
     fileChooser = std::make_unique<juce::FileChooser> (
         "Export pattern " + juce::String::charToString (kPatternLetters[pattern]) + " as MIDI",
         juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-            .getChildFile ("Replicant303_pattern_" + juce::String (pattern + 1) + ".mid"),
-        "*.mid");
+            .getChildFile ("Replicant303_pattern_" + juce::String (pattern + 1) + ".midi"),
+        "*.midi;*.mid");
 
     auto safeThis = juce::Component::SafePointer<PatternDrawer> (this);
 
@@ -934,4 +1098,164 @@ void PatternDrawer::exportCurrentPattern()
                                   const bool ok = safeThis->processor.exportPatternToMidi (file, pattern);
                                   juce::ignoreUnused (ok);
                               });
+}
+
+//==============================================================================
+void PatternDrawer::syncPresetSelection()
+{
+    const int bank = currentBank();
+    const int index = processor.getPresetBank().getSelectedSlot (bank);
+
+    presetPage = index / 8;
+    presetSlot = index % 8;
+    repaint();
+}
+
+//==============================================================================
+void PatternDrawer::choosePresetPage (int page)
+{
+    presetPage = juce::jlimit (0, 7, page);
+    repaint();
+}
+
+void PatternDrawer::loadPreset (int index)
+{
+    const int bank = currentBank();
+    const int safeIndex = juce::jlimit (0, Replicant303::PresetBank::presetsPerBank - 1, index);
+
+    presetPage = safeIndex / 8;
+    presetSlot = safeIndex % 8;
+
+    processor.loadPreset (bank, safeIndex);
+    selectedStep = 0;
+    repaint();
+}
+
+void PatternDrawer::generatePreset()
+{
+    const int bank = currentBank();
+    const int index = currentPresetIndex();
+    const auto seed = (juce::uint32) (juce::Time::getHighResolutionTicks()
+                                      ^ (juce::int64) (juce::Time::getMillisecondCounter()
+                                                       * 2654435761u));
+
+    processor.generatePreset (bank, index, seed);
+
+    presetPage = index / 8;
+    presetSlot = index % 8;
+
+    showPresetStatus ("GENERATED "
+                      + Replicant303::PresetBank::getBankLetter (bank) + " "
+                      + juce::String (index + 1).paddedLeft ('0', 2));
+}
+
+void PatternDrawer::storePreset()
+{
+    const int bank = currentBank();
+    const int index = currentPresetIndex();
+    const auto name = processor.getPresetBank().getPreset (bank, index).name;
+
+    processor.storeCurrentPreset (bank, index, name);
+
+    showPresetStatus ("STORED "
+                      + Replicant303::PresetBank::getBankLetter (bank) + " "
+                      + juce::String (index + 1).paddedLeft ('0', 2));
+}
+
+void PatternDrawer::importPreset()
+{
+    const int bank = currentBank();
+    const int index = currentPresetIndex();
+
+    fileChooser = std::make_unique<juce::FileChooser> (
+        "Import Replicant303 preset (" + Replicant303::PresetBank::getBankLetter (bank)
+            + " " + juce::String (index + 1).paddedLeft ('0', 2) + ")",
+        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+        "*.midi;*.mid");
+
+    auto safeThis = juce::Component::SafePointer<PatternDrawer> (this);
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::openMode
+                              | juce::FileBrowserComponent::canSelectFiles,
+                              [safeThis, bank, index] (const juce::FileChooser& chooser)
+                              {
+                                  if (safeThis == nullptr)
+                                      return;
+
+                                  const auto file = chooser.getResult();
+
+                                  if (file.getFullPathName().isEmpty())
+                                      return;
+
+                                  const bool ok = safeThis->processor.importPresetFromMidi (file, bank, index);
+
+                                  if (ok)
+                                  {
+                                      safeThis->presetPage = index / 8;
+                                      safeThis->presetSlot = index % 8;
+                                  }
+
+                                  safeThis->showPresetStatus (
+                                      ok ? "IMPORTED " + file.getFileName()
+                                         : "IMPORT FAILED",
+                                      3000);
+                              });
+}
+
+void PatternDrawer::exportPreset()
+{
+    const int bank = currentBank();
+    const int index = currentPresetIndex();
+    const auto& preset = processor.getPresetBank().getPreset (bank, index);
+
+    auto safeName = preset.name.replaceCharacter (' ', '_');
+    safeName = safeName.retainCharacters ("abcdefghijklmnopqrstuvwxyz"
+                                          "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                          "0123456789_-");
+
+    if (safeName.isEmpty())
+        safeName = "Preset";
+
+    const auto defaultFile = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+        .getChildFile ("Replicant303_"
+                       + Replicant303::PresetBank::getBankLetter (bank)
+                       + juce::String (index + 1).paddedLeft ('0', 2)
+                       + "_" + safeName + ".midi");
+
+    fileChooser = std::make_unique<juce::FileChooser> (
+        "Export preset as .midi", defaultFile, "*.midi;*.mid");
+
+    auto safeThis = juce::Component::SafePointer<PatternDrawer> (this);
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::saveMode
+                              | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [safeThis, bank, index] (const juce::FileChooser& chooser)
+                              {
+                                  if (safeThis == nullptr)
+                                      return;
+
+                                  auto file = chooser.getResult();
+
+                                  if (file.getFullPathName().isEmpty())
+                                      return;
+
+                                  if (file.getFileExtension().isEmpty())
+                                      file = file.getSiblingFile (file.getFileNameWithoutExtension()
+                                                                  + ".midi");
+
+                                  const bool ok = safeThis->processor.exportPresetToMidi (file, bank, index);
+
+                                  safeThis->showPresetStatus (
+                                      ok ? "EXPORTED " + file.getFileName()
+                                         : "EXPORT FAILED",
+                                      3000);
+                              });
+}
+
+void PatternDrawer::showPresetStatus (const juce::String& text, int milliseconds)
+{
+    presetStatus = text;
+    presetStatusUntilMs = juce::Time::getMillisecondCounterHiRes() + (double) milliseconds;
+    repaint();
 }

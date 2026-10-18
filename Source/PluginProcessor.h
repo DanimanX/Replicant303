@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "DSP/SynthEngine.h"
 #include "DSP/PatternSequencer.h"
+#include "Presets/PresetBank.h"
 
 class Replicant303AudioProcessor : public juce::AudioProcessor
 {
@@ -58,9 +59,32 @@ public:
     /** Writes a pattern from the bank to a Standard MIDI File. */
     bool exportPatternToMidi(const juce::File& file, int patternIndex);
 
+    // -------------------------------------------------------------------------
+    // Preset vault (eight banks of 64 presets, one bank per pattern letter)
+    // -------------------------------------------------------------------------
+    Replicant303::PresetBank& getPresetBank() noexcept { return presetBank; }
+    const Replicant303::PresetBank& getPresetBank() const noexcept { return presetBank; }
+
+    /** Loads a bank slot into its pattern letter and applies the full voice. */
+    void loadPreset(int bank, int slot);
+
+    /** Captures the live sound + current pattern under a display name. */
+    Replicant303::Preset captureCurrentPreset(const juce::String& name) const;
+
+    /** Stores the live state in a bank slot as a user override. */
+    void storeCurrentPreset(int bank, int slot, const juce::String& name);
+
+    /** Generates a new procedural preset, stores it and loads it. */
+    void generatePreset(int bank, int slot, juce::uint32 seed);
+
+    /** `.midi` preset import / export (pattern + full voice). */
+    bool exportPresetToMidi(const juce::File& file, int bank, int slot);
+    bool importPresetFromMidi(const juce::File& file, int bank, int slot);
+
 private:
     Replicant303::SynthEngine synthEngine;
     Replicant303::PatternSequencer sequencer;
+    Replicant303::PresetBank presetBank;
     juce::MidiKeyboardState keyboardState;
 
     /** Reused per block so the audio thread does not allocate a fresh MIDI
@@ -87,6 +111,9 @@ private:
     std::atomic<float>* distMixParam = nullptr;
 
     void updateParameters() noexcept;
+
+    /** Sets one APVTS parameter from a plain (not normalised) value. */
+    void setParameterValue(const juce::String& parameterId, float plainValue);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Replicant303AudioProcessor)
 };

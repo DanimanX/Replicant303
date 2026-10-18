@@ -63,6 +63,11 @@ namespace Replicant303
         /** True when the transport *should* run (i.e. PLAY was pressed). */
         bool isTransportArmed() const noexcept { return playRequested.load (std::memory_order_relaxed); }
 
+        /** Asks the audio thread to release any held note and restart the
+            pattern from step 0 on the next block. Used when a preset replaces
+            the line under a running clock. */
+        void requestReset() noexcept { resetRequested.store (true, std::memory_order_release); }
+
         void  setSyncMode (SyncMode mode) noexcept;
         SyncMode getSyncMode() const noexcept { return static_cast<SyncMode> (syncMode.load (std::memory_order_relaxed)); }
 

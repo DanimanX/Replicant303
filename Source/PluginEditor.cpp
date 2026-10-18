@@ -94,6 +94,7 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
     // -------------------------------------------------------------------------
     patternDrawer = std::make_unique<PatternDrawer>(audioProcessor);
     patternDrawer->onCloseRequested = [this]() { setPatternDrawerOpen(false); };
+    patternDrawer->syncPresetSelection();
     addChildComponent(*patternDrawer);
     patternDrawer->setBounds(0, Replicant303::Layout::panelHeight,
                              Replicant303::Layout::panelWidth, PatternDrawer::drawerHeight);
@@ -378,9 +379,15 @@ void Replicant303AudioProcessorEditor::syncPatternGroup()
 
     if (group != lastPatternGroup)
     {
-        // The hardware TRACK knob selects a group of two patterns.
+        // The hardware TRACK knob selects a group of two patterns. A preset
+        // load can also move the parameter; in that case the pattern is
+        // already inside the new group and must not be snapped back to its
+        // first slot.
         lastPatternGroup = group;
-        sequencer.setCurrentPattern(group * 2);
+
+        if (pattern / 2 != group)
+            sequencer.setCurrentPattern(group * 2);
+
         return;
     }
 
@@ -397,6 +404,9 @@ void Replicant303AudioProcessorEditor::syncPatternGroup()
 void Replicant303AudioProcessorEditor::setPatternDrawerOpen (bool shouldBeOpen, bool animate)
 {
     drawerOpen = shouldBeOpen;
+
+    if (shouldBeOpen && patternDrawer != nullptr)
+        patternDrawer->syncPresetSelection();
 
     if (! animate)
     {

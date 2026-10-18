@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "GUI/Replicant303Theme.h"
+#include "Presets/PresetIO.h"
 
 Replicant303AudioProcessor::Replicant303AudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
@@ -260,6 +261,11 @@ void Replicant303AudioProcessor::getStateInformation(juce::MemoryBlock& destData
     state.removeChild(state.getChildWithName("SEQUENCER"), nullptr);
     state.appendChild(sequencer.toValueTree(), nullptr);
 
+    // User preset overrides live next to the sequencer. Factory slots are
+    // regenerated on load, so only edited/imported slots cost state space.
+    state.removeChild(state.getChildWithName("PRESETBANK"), nullptr);
+    state.appendChild(presetBank.toValueTree(), nullptr);
+
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -270,6 +276,7 @@ void Replicant303AudioProcessor::setStateInformation(const void* data, int sizeI
     if (xmlState != nullptr && xmlState->hasTagName(apvts.state.getType()))
     {
         auto tree = juce::ValueTree::fromXml(*xmlState);
+        presetBank.restoreFromValueTree(tree.getChildWithName("PRESETBANK"));
         sequencer.restoreFromValueTree(tree.getChildWithName("SEQUENCER"));
         apvts.replaceState(tree);
     }
@@ -279,6 +286,128 @@ bool Replicant303AudioProcessor::exportPatternToMidi(const juce::File& file, int
 {
     const double bpm = tempoParam != nullptr ? (double) tempoParam->load() : 125.0;
     return sequencer.writeMidiFile(file, patternIndex, bpm);
+}
+
+// ------------------------------------------------------------------------------
+// Preset vault
+// ------------------------------------------------------------------------------
+void Replicant303AudioProcessor::setParameterValue(const juce::String& parameterId, float plainValue)
+{
+    if (auto* parameter = apvts.getParameter(parameterId))
+    {
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(plainValue));
+        parameter->endChangeGesture();
+    }
+}
+
+void Replicant303AudioProcessor::loadPreset(int bank, int slot)
+{
+    const int safeBank = juce::jlimit(0, Replicant303::PresetBank::numBanks - 1, bank);
+    const int safeSlot = juce::jlimit(0, Replicant303::PresetBank::presetsPerBank - 1, slot);
+    const auto& preset = presetBank.getPreset(safeBank, safeSlot);
+
+    presetBank.setSelectedSlot(safeBank, safeSlot);
+
+    // The bank letter is the pattern slot: loading A/17 writes pattern A.
+    sequencer.setCurrentPattern(safeBank);
+    sequencer.setPattern(safeBank, preset.pattern);
+    sequencer.setSwing(preset.swing);
+    sequencer.requestReset();
+
+    setParameterValue("waveform", (float) preset.waveform);
+    setParameterValue("tuning", preset.tuning);
+    setParameterValue("cutoff", preset.cutoff);
+    setParameterValue("resonance", preset.resonance);
+    setParameterValue("env_mod", preset.envMod);
+    setParameterValue("decay", preset.decay);
+    setParameterValue("accent", preset.accent);
+    setParameterValue("tempo", preset.tempo);
+    setParameterValue("dist_active", preset.distActive ? 1.0f : 0.0f);
+    setParameterValue("dist_type", (float) preset.distType);
+    setParameterValue("dist_drive", preset.distDrive);
+    setParameterValue("dist_tone", preset.distTone);
+    setParameterValue("dist_mix", preset.distMix);
+
+    // Keep the hardware TRACK knob in step with the loaded letter.
+    setParameterValue("pattern_group", (float) (safeBank / 2));
+}
+
+Replicant303::Preset Replicant303AudioProcessor::captureCurrentPreset(const juce::String& name) const
+{
+    Replicant303::Preset preset;
+    preset.name = name;
+    preset.pattern = sequencer.getPattern(sequencer.getCurrentPattern());
+    preset.swing = sequencer.getSwing();
+
+    auto raw = [this] (const char* id, float fallback)
+    {
+        if (auto* value = apvts.getRawParameterValue(id))
+            return value->load();
+
+        return fallback;
+    };
+
+    preset.waveform = juce::roundToInt(raw("waveform", 0.0f));
+    preset.tuning = raw("tuning", 0.0f);
+    preset.cutoff = raw("cutoff", 350.0f);
+    preset.resonance = raw("resonance", 0.65f);
+    preset.envMod = raw("env_mod", 0.60f);
+    preset.decay = raw("decay", 0.75f);
+    preset.accent = raw("accent", 0.70f);
+    preset.tempo = raw("tempo", 125.0f);
+    preset.distActive = raw("dist_active", 1.0f) > 0.5f;
+    preset.distType = juce::roundToInt(raw("dist_type", 0.0f));
+    preset.distDrive = raw("dist_drive", 0.50f);
+    preset.distTone = raw("dist_tone", 0.60f);
+    preset.distMix = raw("dist_mix", 0.85f);
+
+    preset.sanitise();
+    return preset;
+}
+
+void Replicant303AudioProcessor::storeCurrentPreset(int bank, int slot, const juce::String& name)
+{
+    const auto preset = captureCurrentPreset(name);
+    presetBank.setPreset(bank, slot, preset);
+    presetBank.setSelectedSlot(bank, slot);
+}
+
+void Replicant303AudioProcessor::generatePreset(int bank, int slot, juce::uint32 seed)
+{
+    const int safeBank = juce::jlimit(0, Replicant303::PresetBank::numBanks - 1, bank);
+    const int safeSlot = juce::jlimit(0, Replicant303::PresetBank::presetsPerBank - 1, slot);
+
+    presetBank.setPreset(safeBank, safeSlot,
+                         Replicant303::PresetBank::generatePreset(safeBank, safeSlot, seed));
+    loadPreset(safeBank, safeSlot);
+}
+
+bool Replicant303AudioProcessor::exportPresetToMidi(const juce::File& file, int bank, int slot)
+{
+    const int safeBank = juce::jlimit(0, Replicant303::PresetBank::numBanks - 1, bank);
+    const int safeSlot = juce::jlimit(0, Replicant303::PresetBank::presetsPerBank - 1, slot);
+    const auto name = presetBank.getPreset(safeBank, safeSlot).name;
+
+    return Replicant303::PresetIO::writeMidiFile(captureCurrentPreset(name), file);
+}
+
+bool Replicant303AudioProcessor::importPresetFromMidi(const juce::File& file, int bank, int slot)
+{
+    const int safeBank = juce::jlimit(0, Replicant303::PresetBank::numBanks - 1, bank);
+    const int safeSlot = juce::jlimit(0, Replicant303::PresetBank::presetsPerBank - 1, slot);
+
+    Replicant303::Preset preset;
+
+    if (! Replicant303::PresetIO::readMidiFile(file, preset))
+        return false;
+
+    if (preset.name.isEmpty())
+        preset.name = file.getFileNameWithoutExtension();
+
+    presetBank.setPreset(safeBank, safeSlot, preset);
+    loadPreset(safeBank, safeSlot);
+    return true;
 }
 
 // ------------------------------------------------------------------------------

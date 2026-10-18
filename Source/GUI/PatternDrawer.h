@@ -4,6 +4,8 @@
 #include "PluginProcessor.h"
 #include "Replicant303Theme.h"
 
+#include <array>
+
 //==============================================================================
 /** Slide-down pattern drawer.
 
@@ -19,7 +21,7 @@ public:
     explicit PatternDrawer (Replicant303AudioProcessor&);
     ~PatternDrawer() override = default;
 
-    static constexpr int drawerHeight = 400;
+    static constexpr int drawerHeight = 440;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -38,6 +40,9 @@ public:
     /** Raised by the CLOSE handle in the drawer header. */
     std::function<void()> onCloseRequested;
 
+    /** Aligns the page/slot browser with the bank's persisted selection. */
+    void syncPresetSelection();
+
 private:
     //==========================================================================
     static const Replicant303::Theme& theme() noexcept
@@ -52,6 +57,9 @@ private:
     void drawLanes (juce::Graphics&);
     void drawInspector (juce::Graphics&);
     void drawActions (juce::Graphics&);
+    void drawPresetVault (juce::Graphics&);
+    void drawPresetKey (juce::Graphics&, juce::Rectangle<float>,
+                        const juce::String& text, bool active);
 
     void drawTactileButton (juce::Graphics&, juce::Rectangle<float>,
                             const juce::String& text, bool lit, bool compact = false);
@@ -72,6 +80,17 @@ private:
     void randomizeCurrentPattern();
     void exportCurrentPattern();
 
+    // Preset vault
+    int currentBank() const noexcept { return sequencer.getCurrentPattern(); }
+    int currentPresetIndex() const noexcept { return presetPage * 8 + presetSlot; }
+    void choosePresetPage (int page);
+    void loadPreset (int index);
+    void generatePreset();
+    void storePreset();
+    void importPreset();
+    void exportPreset();
+    void showPresetStatus (const juce::String& text, int milliseconds = 2400);
+
     Replicant303AudioProcessor& processor;
     Replicant303::PatternSequencer& sequencer;
 
@@ -83,6 +102,11 @@ private:
     bool hasClipboard = false;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
+
+    int presetPage = 0;
+    int presetSlot = 0;
+    juce::String presetStatus;
+    double presetStatusUntilMs = 0.0;
 
     // Last clock state, used to avoid pointless repaints.
     int   lastStep = -1;
@@ -97,6 +121,12 @@ private:
     juce::Rectangle<float> lengthMinus, lengthValue, lengthPlus, swingArea, swingTrack;
     std::array<juce::Rectangle<float>, 8> slotButtons;
     std::array<juce::Rectangle<float>, 6> actionButtons;
+
+    juce::Rectangle<float> presetArea, presetNameArea;
+    std::array<juce::Rectangle<float>, 8> presetPageButtons;
+    std::array<juce::Rectangle<float>, 8> presetSlotButtons;
+    juce::Rectangle<float> presetGenButton, presetStoreButton;
+    juce::Rectangle<float> presetImportButton, presetExportButton;
 
     juce::Rectangle<float> noteMinus12, notePlus12, noteMinus1, notePlus1;
     juce::Rectangle<float> inspGate, inspAccent, inspSlide;

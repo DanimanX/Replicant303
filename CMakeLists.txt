@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Replicant303 VERSION 1.1.0 LANGUAGES C CXX)
+project(Replicant303 VERSION 1.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -45,6 +45,12 @@ set(R303_SOURCES
     Source/DSP/Pattern.h
     Source/DSP/PatternSequencer.h
     Source/DSP/PatternSequencer.cpp
+
+    # Preset vault + .midi preset I/O
+    Source/Presets/PresetBank.h
+    Source/Presets/PresetBank.cpp
+    Source/Presets/PresetIO.h
+    Source/Presets/PresetIO.cpp
 
     # GUI
     Source/GUI/Replicant303LookAndFeel.h
@@ -127,3 +133,7 @@ r303_add_tool(run_tests tools/run_tests.cpp)
 
 # Renders the acid demo used by the promo video through the real plugin DSP.
 r303_add_tool(render_audio_demo tools/render_audio_demo.cpp)
+
+# Writes the factory preset examples (and optionally the full 8 x 64 bank) as
+# .midi files. It is the checked-in source of truth for presets/.
+r303_add_tool(generate_presets tools/generate_presets.cpp)

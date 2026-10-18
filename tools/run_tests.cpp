@@ -13,6 +13,8 @@
 #include "PluginProcessor.h"
 #include "DSP/PatternSequencer.h"
 #include "DSP/SynthEngine.h"
+#include "Presets/PresetBank.h"
+#include "Presets/PresetIO.h"
 #include "PluginEditor.h"
 
 #include <iostream>
@@ -508,6 +510,193 @@ namespace
     }
 
     //==========================================================================
+    void testPresetVault()
+    {
+        section ("Preset vault");
+
+        Replicant303::PresetBank bank;
+
+        check (Replicant303::PresetBank::numBanks == 8
+               && Replicant303::PresetBank::presetsPerBank == 64,
+               "the vault is eight banks of 64 presets");
+
+        bool legacyIntact = true;
+        for (int b = 0; b < Replicant303::PresetBank::numBanks; ++b)
+        {
+            const auto& slotZero = bank.getPreset (b, 0);
+            legacyIntact = legacyIntact
+                           && slotZero.pattern == Replicant303::makeDefaultPattern (b);
+        }
+        check (legacyIntact, "slot 01 of every letter is the original factory pattern");
+
+        check (bank.getPreset (0, 0).name == "Amber Line"
+               && bank.getPreset (7, 0).name == "Last Replicant",
+               "the legacy names survive the vault");
+
+        auto generatedA = Replicant303::PresetBank::generatePreset (3, 17, 0);
+        auto generatedB = Replicant303::PresetBank::generatePreset (3, 17, 0);
+        check (generatedA == generatedB, "the preset generator is deterministic");
+
+        auto seeded = Replicant303::PresetBank::generatePreset (3, 17, 0xdecafbad);
+        check (seeded != generatedA, "a different seed generates a different preset");
+
+        bool playable = true;
+        bool namesUnique = true;
+
+        for (int b = 0; b < Replicant303::PresetBank::numBanks; ++b)
+        {
+            juce::StringArray names;
+
+            for (int slot = 0; slot < Replicant303::PresetBank::presetsPerBank; ++slot)
+            {
+                const auto preset = Replicant303::PresetBank::makeFactoryPreset (b, slot);
+                names.addIfNotAlreadyThere (preset.name);
+
+                bool hasGate = false;
+
+                for (int i = 0; i < Replicant303::Pattern::maxSteps; ++i)
+                {
+                    const auto& step = preset.pattern[i];
+                    playable = playable
+                               && step.note >= Replicant303::Pattern::lowestNote
+                               && step.note <= Replicant303::Pattern::highestNote;
+                    hasGate = hasGate || step.gate;
+                }
+
+                playable = playable
+                           && hasGate
+                           && preset.pattern.length >= 1
+                           && preset.pattern.length <= Replicant303::Pattern::maxSteps
+                           && preset.tempo >= 40.0f && preset.tempo <= 300.0f
+                           && preset.cutoff >= 25.0f && preset.cutoff <= 4500.0f;
+            }
+
+            namesUnique = namesUnique && names.size() == Replicant303::PresetBank::presetsPerBank;
+        }
+
+        check (playable, "all 512 factory presets are playable and in range");
+        check (namesUnique, "every bank has 64 distinct preset names");
+
+        //----------------------------------------------------------------------
+        auto custom = bank.getPreset (2, 9);
+        custom.name = "Test Circuit";
+        custom.cutoff = 1234.0f;
+        custom.pattern[0].note = 43;
+        custom.pattern[0].accent = true;
+
+        bank.setPreset (2, 9, custom);
+        bank.setSelectedSlot (2, 9);
+        check (bank.getPreset (2, 9) == custom, "setPreset stores a user override");
+        check (bank.isOverridden (2, 9), "the overridden slot is flagged");
+        check (! bank.isOverridden (2, 8), "neighbouring slots stay factory");
+
+        auto state = bank.toValueTree();
+        Replicant303::PresetBank restored;
+        restored.restoreFromValueTree (state);
+        check (restored.getPreset (2, 9) == custom,
+               "user overrides survive the preset-bank state round-trip");
+        check (! restored.isOverridden (2, 8),
+               "factory slots are not serialised as overrides");
+        check (restored.getSelectedSlot (2) == 9,
+               "the selected preset slot survives the preset-bank state round-trip");
+
+        restored.restoreFromValueTree (juce::ValueTree());
+        check (restored.getPreset (2, 9) == Replicant303::PresetBank::makeFactoryPreset (2, 9),
+               "a missing bank state restores factory content");
+        check (restored.getSelectedSlot (2) == 0,
+               "a missing bank state resets the selected slot");
+
+        //----------------------------------------------------------------------
+        const auto jsonPreset = Replicant303::PresetBank::makeFactoryPreset (5, 23);
+        const auto json = Replicant303::PresetIO::toJson (jsonPreset);
+        Replicant303::Preset fromJson;
+        check (Replicant303::PresetIO::fromJson (json, fromJson) && fromJson == jsonPreset,
+               "preset JSON round-trip");
+
+        auto quotedPreset = jsonPreset;
+        quotedPreset.name = "Acid \"Quote\" // 303";
+        Replicant303::Preset quotedRoundTrip;
+        check (Replicant303::PresetIO::fromJson (Replicant303::PresetIO::toJson (quotedPreset),
+                                                 quotedRoundTrip)
+                   && quotedRoundTrip == quotedPreset,
+               "preset JSON escapes quotes in the name");
+
+        auto tempDirectory = juce::File::getSpecialLocation (juce::File::tempDirectory);
+        auto presetFile = tempDirectory.getNonexistentChildFile ("r303_preset_test", ".midi", false);
+
+        check (Replicant303::PresetIO::writeMidiFile (jsonPreset, presetFile),
+               "preset writes as .midi");
+        check (presetFile.existsAsFile() && presetFile.getSize() > 0,
+               "the .midi preset file is not empty");
+
+        Replicant303::Preset filePreset;
+        check (Replicant303::PresetIO::readMidiFile (presetFile, filePreset),
+               "preset reads back from .midi");
+        check (filePreset == jsonPreset, ".midi preset round-trip preserves the full patch");
+
+        {
+            juce::MidiFile midiFile;
+            juce::FileInputStream input (presetFile);
+            check (midiFile.readFrom (input), "the preset is a valid Standard MIDI File");
+
+            bool foundMetadata = false;
+            bool foundTempo = false;
+
+            if (const auto* track = midiFile.getTrack (0))
+            {
+                for (int i = 0; i < track->getNumEvents(); ++i)
+                {
+                    const auto& message = track->getEventPointer (i)->message;
+
+                    if (message.isTextMetaEvent()
+                        && message.getTextFromTextMetaEvent().startsWith (
+                               Replicant303::PresetIO::metadataPrefix))
+                        foundMetadata = true;
+
+                    if (message.isTempoMetaEvent())
+                        foundTempo = true;
+                }
+            }
+
+            check (foundMetadata && foundTempo,
+                   ".midi preset embeds Replicant metadata and a tempo event");
+        }
+
+        presetFile.deleteFile();
+
+        //----------------------------------------------------------------------
+        // A plain MIDI file (no metadata) imports as a pattern.
+        Replicant303::PatternSequencer sequencer;
+        auto plain = makePlainPattern (4);
+        plain[0].accent = true;
+        plain[1].note = 43;
+        plain[1].slide = true;
+        sequencer.setPattern (0, plain);
+
+        auto plainFile = tempDirectory.getNonexistentChildFile ("r303_plain_midi", ".mid", false);
+        check (sequencer.writeMidiFile (plainFile, 0, 128.0), "plain MIDI export succeeds");
+
+        Replicant303::Preset plainPreset;
+        check (Replicant303::PresetIO::readMidiFile (plainFile, plainPreset),
+               "a plain MIDI file imports as a preset");
+        check (plainPreset.pattern.length == 4, "plain MIDI import keeps a 4-step length");
+        check (plainPreset.pattern[0].gate && plainPreset.pattern[0].accent,
+               "plain MIDI import derives the accent from velocity");
+        check (plainPreset.pattern[1].note == 43 && plainPreset.pattern[1].slide,
+               "plain MIDI import derives notes and slides");
+        check (std::abs (plainPreset.tempo - 128.0f) < 0.5f,
+               "plain MIDI import reads the tempo");
+        plainFile.deleteFile();
+
+        auto invalidFile = tempDirectory.getNonexistentChildFile ("r303_not_midi", ".midi", false);
+        invalidFile.replaceWithText ("this is not a midi file");
+        Replicant303::Preset invalidPreset;
+        check (! Replicant303::PresetIO::readMidiFile (invalidFile, invalidPreset),
+               "invalid .midi files are rejected");
+        invalidFile.deleteFile();
+    }
+
+    //==========================================================================
     void testSynthEngine()
     {
         section ("Synth engine");
@@ -616,7 +805,8 @@ namespace
         check (editor->getHeight() == 590, "panel starts collapsed (590 px)");
 
         concrete->setPatternDrawerOpen (true, false);
-        check (editor->getHeight() == 990, "drawer opens to 990 px without animation");
+        check (editor->getHeight() == 590 + PatternDrawer::drawerHeight,
+               "drawer opens to the full panel + drawer height without animation");
 
         concrete->setPatternDrawerOpen (false, false);
         check (editor->getHeight() == 590, "drawer closes back to 590 px");
@@ -625,11 +815,20 @@ namespace
         check (concrete->isPatternDrawerOpen(), "drawer reports the open state");
 
         juce::MessageManager::getInstance()->runDispatchLoopUntil (600);
-        check (editor->getHeight() == 990, "animated drawer reaches the full height");
+        check (editor->getHeight() == 590 + PatternDrawer::drawerHeight,
+               "animated drawer reaches the full height");
 
         concrete->setPatternDrawerOpen (false, true);
         juce::MessageManager::getInstance()->runDispatchLoopUntil (600);
         check (editor->getHeight() == 590, "animated drawer closes completely");
+
+        // Loading the H bank moves the TRACK knob to group 3. The timer used to
+        // snap the active pattern back to group*2 (pattern F); it must leave
+        // the explicitly loaded letter H alone.
+        processor.loadPreset (7, 5);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
+        check (processor.getSequencer().getCurrentPattern() == 7,
+               "a loaded preset is not snapped back by the TRACK knob");
     }
 
     //==========================================================================
@@ -742,6 +941,95 @@ namespace
         }
 
         check (tailPeak < 0.01f, "output decays to silence after stop (no stuck note)");
+
+        //----------------------------------------------------------------------
+        // Preset vault integration
+        //----------------------------------------------------------------------
+        auto& presetBank = processor.getPresetBank();
+        const auto expected = presetBank.getPreset (1, 5);
+
+        processor.loadPreset (1, 5);
+        check (processor.getSequencer().getCurrentPattern() == 1,
+               "loading a preset selects its letter");
+        check (processor.getSequencer().getPattern (1) == expected.pattern,
+               "loading a preset installs its pattern");
+
+        const auto loadedCutoff = processor.apvts.getRawParameterValue ("cutoff")->load();
+        const auto loadedTempo = processor.apvts.getRawParameterValue ("tempo")->load();
+        check (std::abs (loadedCutoff - expected.cutoff) < 0.6f,
+               "loading a preset restores the filter cutoff");
+        check (std::abs (loadedTempo - expected.tempo) < 0.6f,
+               "loading a preset restores the tempo");
+        check (std::abs (processor.getSequencer().getSwing() - expected.swing) < 1.0e-4f,
+               "loading a preset restores swing");
+
+        // STORE captures the live edit into the selected slot.
+        if (auto* cutoff = processor.apvts.getParameter ("cutoff"))
+            cutoff->setValueNotifyingHost (cutoff->convertTo0to1 (2222.0f));
+
+        processor.storeCurrentPreset (7, 12, "Live Circuit");
+        check (presetBank.getPreset (7, 12).name == "Live Circuit",
+               "STORE names the user preset");
+        check (presetBank.isOverridden (7, 12), "STORE marks the slot as an override");
+        check (std::abs (presetBank.getPreset (7, 12).cutoff - 2222.0f) < 0.6f,
+               "STORE captures the live cutoff");
+
+        // EXPORT -> IMPORT round-trip through a real .midi file.
+        auto presetFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getNonexistentChildFile ("r303_processor_preset", ".midi", false);
+
+        processor.loadPreset (2, 9);
+        const auto exportedPattern = processor.getSequencer().getPattern (2);
+
+        if (auto* cutoff = processor.apvts.getParameter ("cutoff"))
+            cutoff->setValueNotifyingHost (cutoff->convertTo0to1 (1800.0f));
+
+        check (processor.exportPresetToMidi (presetFile, 2, 9),
+               "EXPORT writes a .midi preset");
+
+        processor.loadPreset (0, 0);
+        check (processor.importPresetFromMidi (presetFile, 4, 17),
+               "IMPORT reads a .midi preset");
+        check (processor.getSequencer().getCurrentPattern() == 4,
+               "IMPORT selects the destination letter");
+        check (processor.getSequencer().getPattern (4) == exportedPattern,
+               "IMPORT restores the exported pattern");
+        check (std::abs (presetBank.getPreset (4, 17).cutoff - 1800.0f) < 0.7f,
+               "IMPORT restores the exported voice");
+        presetFile.deleteFile();
+
+        // GEN generates, stores and loads a new variation.
+        const auto beforeGenerate = presetBank.getPreset (6, 33);
+        processor.generatePreset (6, 33, 0xabcdef01u);
+        check (presetBank.isOverridden (6, 33), "GEN stores the generated slot");
+        check (processor.getSequencer().getCurrentPattern() == 6,
+               "GEN selects the destination letter");
+        check (processor.getSequencer().getPattern (6) == presetBank.getPreset (6, 33).pattern,
+               "GEN loads the generated pattern");
+        check (presetBank.getPreset (6, 33) != beforeGenerate,
+               "GEN produces a new variation");
+
+        // Overrides travel in the plugin state, factory slots do not.
+        juce::MemoryBlock vaultState;
+        processor.getStateInformation (vaultState);
+
+        Replicant303AudioProcessor vaultRestored;
+        vaultRestored.setStateInformation (vaultState.getData(), (int) vaultState.getSize());
+
+        check (vaultRestored.getPresetBank().getPreset (7, 12).name == "Live Circuit",
+               "stored presets survive the plugin state round-trip");
+        check (vaultRestored.getPresetBank().getSelectedSlot (1) == 5,
+               "the selected preset slot survives the plugin state round-trip");
+        check (vaultRestored.getPresetBank().getSelectedSlot (6) == 33,
+               "the generated slot stays selected after a state reload");
+        check (vaultRestored.getPresetBank().getPreset (4, 17)
+                   == presetBank.getPreset (4, 17),
+               "imported presets survive the plugin state round-trip");
+        check (vaultRestored.getPresetBank().getPreset (6, 33)
+                   == presetBank.getPreset (6, 33),
+               "generated presets survive the plugin state round-trip");
+        check (! vaultRestored.getPresetBank().isOverridden (0, 1),
+               "factory slots are regenerated instead of serialised");
     }
 }
 
@@ -757,6 +1045,7 @@ int main()
     testClock();
     testTransportEdges();
     testMidiExport();
+    testPresetVault();
     testSynthEngine();
     testEngineEdges();
     testProcessor();
