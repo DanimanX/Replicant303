@@ -6,6 +6,9 @@ Builds the full soundtrack (acid stem from the plugin + synthesized techno bed)
 and renders a 1920x1080 / 30 fps Blade-Runner-flavoured promo in English using
 the real panel screenshots produced by generate_snapshot.
 
+The cut covers the instrument, the pattern core and - new in this version - the
+8 x 64 preset vault, portable .midi presets and the procedural generator.
+
 Usage:
     python3 tools/make_promo.py [--audio-only] [--frames-only]
 
@@ -29,12 +32,13 @@ ASSETS = os.path.join(ROOT, "assets")
 
 W, H = 1920, 1080
 FPS = 30
-DURATION = 64.0
+DURATION = 70.0
 
 AMBER = (255, 184, 92)
 AMBER_HOT = (255, 224, 170)
 CYAN = (92, 226, 255)
 RED = (255, 54, 66)
+GREEN_TXT = (64, 220, 110)
 WHITE = (232, 240, 238)
 MUTED = (150, 168, 168)
 DARK = (4, 6, 9)
@@ -149,7 +153,7 @@ def build_audio():
     kick = np.zeros(n, dtype=np.float32)
     kick_hit = make_kick(rng)
     k = 0
-    while first_kick + k * beat < 58.0:
+    while first_kick + k * beat < 60.0:
         pos = int((first_kick + k * beat) * SAMPLE_RATE)
         end = min(pos + len(kick_hit), n)
         kick[pos:end] += kick_hit[: end - pos]
@@ -190,8 +194,8 @@ def build_audio():
         p = signal.sosfilt(sos, p).astype(np.float32)
         pad[:, ch] = p
 
-    pad_gain = env_ramp(n, [(0, 0.55), (6, 0.30), (24, 0.18), (40, 0.20),
-                            (56, 0.30), (62, 0.35), (64, 0.0)])
+    pad_gain = env_ramp(n, [(0, 0.55), (6, 0.30), (24, 0.18), (45, 0.20),
+                            (58, 0.26), (64, 0.34), (70, 0.0)])
 
     # Rain / air bed.
     rain = np.zeros((n, 2), dtype=np.float32)
@@ -206,7 +210,7 @@ def build_audio():
     # Sidechain pump from the kick.
     duck = np.ones(n, dtype=np.float32)
     k = 0
-    while first_kick + k * beat < 58.0:
+    while first_kick + k * beat < 60.0:
         pos = int((first_kick + k * beat) * SAMPLE_RATE)
         length = int(0.30 * SAMPLE_RATE)
         end = min(pos + length, n)
@@ -214,28 +218,33 @@ def build_audio():
         duck[pos:end] = np.minimum(duck[pos:end], (1.0 - 0.62 * e).astype(np.float32))
         k += 1
 
-    # Reverse swell into the 40 s drop.
+    # Reverse swells into every section drop, including the preset vault reveal.
     swell = np.zeros(n, dtype=np.float32)
-    swell_start = int(35.0 * SAMPLE_RATE)
-    swell_end = int(40.0 * SAMPLE_RATE)
-    seg_n = swell_end - swell_start
-    if seg_n > 0:
+    for swell_start_s, swell_end_s, amp in ((27.5, 31.0, 0.55),
+                                           (35.5, 39.0, 0.45),
+                                           (41.5, 45.0, 0.40),
+                                           (60.0, 64.0, 0.60)):
+        swell_start = int(swell_start_s * SAMPLE_RATE)
+        swell_end = int(swell_end_s * SAMPLE_RATE)
+        seg_n = swell_end - swell_start
+        if seg_n <= 0:
+            continue
         noise = rng.standard_normal(seg_n)
         sos = signal.butter(2, 2500.0, "hp", fs=SAMPLE_RATE, output="sos")
         noise = signal.sosfilt(sos, noise)
         ramp = (np.arange(seg_n) / seg_n) ** 2.2
-        swell[swell_start:swell_end] = (noise * ramp).astype(np.float32) * 0.7
+        swell[swell_start:swell_end] += (noise * ramp).astype(np.float32) * amp
 
-    acid_gain = env_ramp(n, [(0, 0.0), (2.0, 0.32), (6.0, 0.85), (56.0, 0.85),
-                             (60.0, 0.35), (64.0, 0.0)])
+    acid_gain = env_ramp(n, [(0, 0.0), (2.0, 0.32), (6.0, 0.85), (58.0, 0.85),
+                             (62.0, 0.55), (66.0, 0.22), (70.0, 0.0)])
 
     mix = (acid * acid_gain[:, None] * duck[:, None] * 0.85
            + kick[:, None] * 0.85
            + hats[:, None] * 0.55
            + clap[:, None] * 0.65
            + pad * pad_gain[:, None] * 0.8
-           + rain * env_ramp(n, [(0, 1.0), (10, 0.25), (54, 0.25), (60, 0.7), (64, 0.0)])[:, None]
-           + swell[:, None] * 0.45)
+           + rain * env_ramp(n, [(0, 1.0), (10, 0.25), (58, 0.25), (64, 0.70), (70, 0.0)])[:, None]
+           + swell[:, None] * 0.55)
 
     # Gentle glue.
     mix = np.tanh(mix * 1.15) / np.tanh(1.15)
@@ -499,11 +508,13 @@ def scene_intro(frame, t):
     d.text((W - 300, 96), "LOS ANGELES  //  2049", font=font(FONT_MONO, 24), fill=MUTED + (180,))
 
     lines = [
-        (0.6, "> BOOTING REPLICANT CORE .............. OK"),
-        (1.6, "> PATTERN BANK ....................... 8 x 16"),
-        (2.6, "> ACID PROTOCOL ...................... ENGAGED"),
-        (3.6, "> HUMAN INPUT ........................ OPTIONAL"),
-        (4.6, "> SIGNAL ACQUIRED"),
+        (0.5, "> BOOTING REPLICANT CORE .............. OK"),
+        (1.3, "> PATTERN BANK ....................... 8 x 16"),
+        (2.1, "> PRESET VAULT ....................... 8 x 64"),
+        (2.9, "> MIDI PRESET BRIDGE ................. ONLINE"),
+        (3.7, "> ACID PROTOCOL ...................... ENGAGED"),
+        (4.5, "> HUMAN INPUT ........................ OPTIONAL"),
+        (5.3, "> SIGNAL ACQUIRED"),
     ]
 
     y = 330
@@ -531,7 +542,9 @@ def scene_title(frame, t, local):
                 font(FONT_MONO, 30), CYAN + (255,), 3.0, anchor="ma")
     d.text((W / 2, 780), "VIRTUAL ANALOG BASS LINE SYNTHESIZER",
            font=font(FONT_MONO_REG, 22), fill=MUTED + (230,), anchor="ma")
-    d.text((W / 2, 830), "VST3   ·   AU   ·   STANDALONE",
+    d.text((W / 2, 824), "512 PRESETS  ·  5 DISTORTION MODELS  ·  .MIDI PRESET VAULT",
+           font=font(FONT_MONO_REG, 20), fill=AMBER + (220,), anchor="ma")
+    d.text((W / 2, 872), "VST3   ·   AU   ·   STANDALONE",
            font=font(FONT_MONO_REG, 20), fill=MUTED + (170,), anchor="ma")
 
 
@@ -545,7 +558,7 @@ def scene_drawer(frame, t, local):
     rect = (966, 130, 894, 820)
     draw_ui(frame, DRAWER_GREEN, rect, CYAN, scan_t=local * 0.8)
 
-    scale = rect[3] / 990.0
+    scale = rect[3] / 1030.0
     step = int((t / (60.0 / 138.0 / 4))) % 16
     x = rect[0] + (64 + step * 49.75) * scale
     y = rect[1] + 666 * scale
@@ -570,15 +583,15 @@ def scene_drawer(frame, t, local):
     spaced_text(d, (90, 484), "NO MERCY.", font(FONT_TITLE, 84), WHITE + (255,), 2.0)
     for i, line in enumerate(("EIGHT PATTERNS. GATE, ACCENT,",
                               "SLIDE, SWING AND LENGTH —",
-                              "SET PER STEP. EXPORT ANY",
-                              "PATTERN AS A STANDARD MIDI FILE.")):
+                              "SET PER STEP. 512 PRESETS",
+                              "WAITING UNDER THE GRID.")):
         d.text((90, 610 + i * 34), line, font=font(FONT_MONO_REG, 21), fill=MUTED + (235,))
 
 
 def scene_drawer_close(frame, t, local):
     # Crop the transport + grid + lanes + actions and scale them up.
     crop = DRAWER_GREEN.crop((0, 612, 1080, 984))  # 1080 x 372
-    rect = (160, 230, 1600, 551)
+    rect = (160, 300, 1600, 551)
     shot = crop.resize((rect[2], rect[3]), Image.LANCZOS)
     draw_ui(frame, shot, rect, CYAN, scan_t=local * 1.2)
 
@@ -593,13 +606,13 @@ def scene_drawer_close(frame, t, local):
     ld.rectangle([x, y, x + 49.75 * (rect[2] / 900.0), y + h], fill=CYAN + (55,))
     frame.alpha_composite(layer)
 
-    caption(frame, 150, 100, "03 / NOTE ENTRY", "PAINT YOUR OWN LINE",
+    caption(frame, 150, 100, "04 / NOTE ENTRY", "PAINT YOUR OWN LINE",
             "CLICK A CELL TO SET THE NOTE  ·  RIGHT-CLICK TO MUTE  ·  DRAG TO PAINT")
 
 
 def scene_red(frame, t, local):
     draw_ui(frame, PANEL_RED, (150, 176, 1620, 886), RED, scan_t=local * 0.5)
-    caption(frame, 150, 26, "04 / OBSIDIAN RED", "BUILT FOR THE NIGHT",
+    caption(frame, 150, 26, "05 / OBSIDIAN RED", "BUILT FOR THE NIGHT",
             "BLACK ACRYLIC  ·  COPPER TRACES  ·  RED SILKSCREEN")
 
 
@@ -612,14 +625,165 @@ def scene_red_drawer(frame, t, local):
            font=font(FONT_MONO_REG, 20), fill=MUTED + (220,), anchor="ma")
 
 
-def scene_feature(frame, t, local, index, title, sub):
+BANK_LETTERS = "ABCDEFGH"
+VAULT_NAMES = ("AMBER LINE", "SUB LEVEL", "NEON RUN", "MIRROR VAULT",
+               "BLADE PULSE", "ROOFTOP CHASE", "TURBO MIRROR", "LAST REPLICANT")
+
+
+def scene_vault(frame, t, local):
+    """The preset vault: 8 banks x 64 patches, shown as a live 8 x 8 matrix."""
     d = ImageDraw.Draw(frame)
-    d.text((150, 250), f"0{index} / 05", font=font(FONT_MONO, 26), fill=CYAN + (220,))
+
+    d.text((100, 118), "03 / PRESET VAULT", font=font(FONT_MONO, 26), fill=CYAN + (255,))
+    d.line([(100, 166), (240, 166)], fill=AMBER + (255,), width=3)
+
+    spaced_text(d, (88, 182), "512", font(FONT_TITLE, 250), AMBER + (255,), 4.0)
+    d.text((104, 452), "PRESETS", font=font(FONT_TITLE, 54), fill=WHITE + (255,))
+    d.text((104, 524), "EIGHT BANKS  ·  ONE PER PATTERN LETTER",
+           font=font(FONT_MONO_REG, 21), fill=MUTED + (235,))
+    d.text((104, 560), "64 COMPLETE PATCHES EACH  ·  LINE + VOICE + DRIVE",
+           font=font(FONT_MONO_REG, 21), fill=MUTED + (235,))
+
+    for i, line in enumerate(("GEN WRITES A NEW VARIATION", "STORE CAPTURES THE LIVE 303",
+                              "IMPORT / EXPORT .MIDI PRESETS")):
+        d.text((104, 620 + i * 32), "> " + line, font=font(FONT_MONO_REG, 20),
+               fill=AMBER + (190 + i * 15,))
+
+    # --- the 8 x 8 matrix (one bank at a time, pages x slots) ---------------
+    # The real strip below shows bank D / slot 09, so the matrix highlights
+    # exactly that slot while a lighter cursor browses the rest of the vault.
+    bank, page, slot = 3, 1, 8
+    cursor = int(local * 7.5) % 64
+    cursor_bank, cursor_cell = divmod(cursor, 8)
+    pulse = 0.5 + 0.5 * math.sin(local * 9.0)
+
+    grid_x, grid_y = 850, 250
+    cell_w, cell_h = 84, 52
+    step_x, step_y = 92, 58
+
+    for b in range(8):
+        y = grid_y + b * step_y
+        accent = AMBER if b == bank else (CYAN if b % 2 else (120, 200, 220))
+        d.text((grid_x - 40, y + 12), BANK_LETTERS[b], font=font(FONT_TITLE, 30),
+               fill=accent + (255 if b == bank else 120,))
+
+        for pg in range(8):
+            x = grid_x + pg * step_x
+            active = (b == bank and pg == page)
+            face = (44, 33, 18, 255) if active else (12, 18, 23, 255)
+            outline = AMBER if active else (60, 90, 105)
+            d.rounded_rectangle([x, y, x + cell_w, y + cell_h], radius=3,
+                                fill=face, outline=outline + (255 if active else 80,),
+                                width=2 if active else 1)
+
+            d.text((x + 7, y + 5), f"P{pg + 1}", font=font(FONT_MONO, 12),
+                   fill=(AMBER_HOT if active else MUTED) + (240,))
+
+            for sl in range(8):
+                lit = active and sl == slot
+                tx = x + 7 + (sl % 4) * 17
+                ty = y + 25 + (sl // 4) * 11
+                d.rectangle([tx, ty, tx + 12, ty + 6],
+                            fill=(AMBER if lit else (70, 105, 120)) + (255 if lit else 110,))
+
+            if b == cursor_bank and pg == cursor_cell and not active:
+                d.rounded_rectangle([x + 2, y + 2, x + cell_w - 2, y + cell_h - 2],
+                                    radius=3, outline=CYAN + (110,), width=1)
+
+            if active:
+                glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                gd = ImageDraw.Draw(glow)
+                gd.rounded_rectangle([x - 4, y - 4, x + cell_w + 4, y + cell_h + 4],
+                                     radius=5, outline=AMBER + (int(70 + 90 * pulse),), width=8)
+                frame.alpha_composite(glow.filter(ImageFilter.GaussianBlur(14)))
+                d = ImageDraw.Draw(frame)
+
+    # Ticker under the matrix.
+    ticker = (f"BANK {BANK_LETTERS[bank]}  ·  PAGE {page + 1}  ·  SLOT "
+              f"{slot + 1:02d}   {VAULT_NAMES[bank]}")
+    tx = grid_x + 4 * step_x - 4
+    d.text((tx, grid_y + 8 * step_y + 8), ticker, font=font(FONT_MONO, 21),
+           fill=AMBER_HOT + (245,), anchor="ma")
+
+    # --- real preset row from the drawer ----------------------------------
+    strip = DRAWER_GREEN.crop((0, 944, 1080, 1026))
+    strip_w = 1680
+    strip_h = int(strip.height * strip_w / strip.width)
+    strip = strip.resize((strip_w, strip_h), Image.LANCZOS)
+
+    sx, sy = 120, 800
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.rectangle([sx - 10, sy - 10, sx + strip_w + 10, sy + strip_h + 10],
+                 outline=AMBER + (90,), width=9)
+    frame.alpha_composite(glow.filter(ImageFilter.GaussianBlur(18)))
+    frame.alpha_composite(strip.convert("RGBA"), (sx, sy))
+
+    d = ImageDraw.Draw(frame)
+    d.rectangle([sx - 2, sy - 2, sx + strip_w + 2, sy + strip_h + 2],
+                outline=AMBER + (200,), width=2)
+    d.text((sx, sy + strip_h + 10), "PRESET ROW  ·  PAGE 1-8  ·  SLOT 01-08  ·  GEN  STORE  IMPORT  EXPORT",
+           font=font(FONT_MONO, 18), fill=MUTED + (210,))
+
+
+def scene_midi_presets(frame, t, local):
+    scene_feature(frame, t, local, 8, "PORTABLE .MIDI PRESETS",
+                  "EVERY PRESET IS A STANDARD MIDI FILE",
+                  ("R303PRESET/1 METADATA CARRIES THE FULL 303 PATCH",
+                   "PLAIN MIDI FILES IMPORT TOO — ACCENTS AND SLIDES INCLUDED"))
+
+    d = ImageDraw.Draw(frame)
+    badge_x, badge_y = 1280, 300
+    d.rounded_rectangle([badge_x, badge_y, badge_x + 420, badge_y + 260],
+                        radius=6, fill=(12, 18, 23, 235), outline=CYAN + (200,), width=2)
+    d.text((badge_x + 24, badge_y + 22), "REPLICANT303_D09.MIDI",
+           font=font(FONT_MONO, 20), fill=WHITE + (245,))
+    d.line([(badge_x + 24, badge_y + 56), (badge_x + 396, badge_y + 56)],
+           fill=CYAN + (90,), width=1)
+    for i, line in enumerate(("tempo 134.5  ·  16 steps",
+                              "accents 110  ·  slides held",
+                              "VCO / VCF / ENV / DRIVE",
+                              "swing 13%  ·  bank D / slot 09")):
+        d.text((badge_x + 24, badge_y + 76 + i * 34), line,
+               font=font(FONT_MONO_REG, 18), fill=MUTED + (235,))
+    d.text((badge_x + 24, badge_y + 218), "IMPORT / EXPORT", font=font(FONT_MONO, 18),
+           fill=AMBER + (240,))
+
+
+def scene_generator(frame, t, local):
+    scene_feature(frame, t, local, 9, "GENERATE. STORE. PLAY.",
+                  "A NEW ACID PATCH IN ONE BUTTON",
+                  ("GEN BUILDS A DETERMINISTIC PROCEDURAL VARIATION",
+                   "STORE KEEPS THE LIVE EDIT — SAVED WITH THE PROJECT"))
+
+    d = ImageDraw.Draw(frame)
+    bx, by = 1280, 300
+    for i, (label, sub, colour) in enumerate((("GEN", "NEW VARIATION", AMBER),
+                                              ("STORE", "KEEP THIS ONE", GREEN_TXT))):
+        y = by + i * 120
+        d.rounded_rectangle([bx, y, bx + 420, y + 92], radius=6,
+                            fill=(12, 18, 23, 235), outline=colour + (210,), width=2)
+        d.text((bx + 26, y + 14), label, font=font(FONT_MONO, 30), fill=colour + (255,))
+        d.text((bx + 26, y + 56), sub, font=font(FONT_MONO_REG, 17), fill=MUTED + (230,))
+        # LED pip.
+        d.ellipse([bx + 400, y + 34, bx + 428, y + 62], fill=colour + (55,))
+        d.ellipse([bx + 406, y + 40, bx + 422, y + 56], fill=colour + (255,))
+
+
+def scene_feature(frame, t, local, index, title, sub, detail=None):
+    d = ImageDraw.Draw(frame)
+    d.text((150, 250), f"{index:02d} / 09", font=font(FONT_MONO, 26), fill=CYAN + (220,))
     d.line([(150, 310), (150 + 140, 310)], fill=AMBER + (255,), width=3)
 
     spaced_text(d, (150, 360), title, font(FONT_TITLE, 96), AMBER + (255,), 2.0)
 
     d.text((150, 500), sub, font=font(FONT_MONO, 30), fill=WHITE + (235,))
+
+    if detail:
+        y = 556
+        for line in detail:
+            d.text((150, y), line, font=font(FONT_MONO_REG, 22), fill=MUTED + (235,))
+            y += 34
 
     # Decorative waveform.
     pts = []
@@ -652,9 +816,11 @@ def scene_end(frame, t, local):
                 font(FONT_MONO, 26), CYAN + (240,), 2.5, anchor="ma")
     d.text((W / 2, 720), "VST3   ·   AU   ·   STANDALONE",
            font=font(FONT_MONO_REG, 22), fill=MUTED + (220,), anchor="ma")
-    d.text((W / 2, 790), "github.com/DanimanX/Replicant303",
+    d.text((W / 2, 762), "512 PRESETS  ·  8 BANKS  ·  .MIDI PRESET VAULT",
+           font=font(FONT_MONO_REG, 20), fill=AMBER + (215,), anchor="ma")
+    d.text((W / 2, 818), "github.com/DanimanX/Replicant303",
            font=font(FONT_MONO_REG, 24), fill=WHITE + (230,), anchor="ma")
-    d.text((W / 2, 840), "DANIMANX", font=font(FONT_MONO, 20), fill=AMBER + (180,), anchor="ma")
+    d.text((W / 2, 866), "DANIMANX", font=font(FONT_MONO, 20), fill=AMBER + (180,), anchor="ma")
 
 
 # ---------------------------------------------------------------------------
@@ -705,27 +871,30 @@ def render_frame(t):
         scene_intro(frame, t)
     elif t < 14.0:
         scene_title(frame, t, t - 6.0)
-    elif t < 26.0:
+    elif t < 24.0:
         scene_panel(frame, t, t - 14.0)
-    elif t < 33.0:
-        scene_drawer(frame, t, t - 26.0)
-    elif t < 40.0:
-        scene_drawer_close(frame, t, t - 33.0)
-    elif t < 46.0:
-        scene_red(frame, t, t - 40.0)
+    elif t < 31.0:
+        scene_drawer(frame, t, t - 24.0)
+    elif t < 39.0:
+        scene_vault(frame, t, t - 31.0)
+    elif t < 45.0:
+        scene_drawer_close(frame, t, t - 39.0)
     elif t < 51.0:
-        scene_red_drawer(frame, t, t - 46.0)
-    elif t < 53.0:
-        scene_feature(frame, t, t - 51.0, 1, "5 DISTORTION MODELS",
+        scene_red(frame, t, t - 45.0)
+    elif t < 56.0:
+        scene_red_drawer(frame, t, t - 51.0)
+    elif t < 58.0:
+        scene_feature(frame, t, t - 56.0, 6, "5 DISTORTION MODELS",
                       "POCO RAT  ·  TUBE  ·  HARD CLIP  ·  GERMAN FUZZ  ·  FOLDER")
-    elif t < 55.0:
-        scene_feature(frame, t, t - 53.0, 2, "HOST SYNC OR FREE CLOCK",
+    elif t < 60.0:
+        scene_feature(frame, t, t - 58.0, 7, "HOST SYNC OR FREE CLOCK",
                       "FOLLOW YOUR DAW TRANSPORT  ·  OR RUN STANDALONE")
-    elif t < 57.0:
-        scene_feature(frame, t, t - 55.0, 3, "EXPORT YOUR PATTERNS",
-                      "16-STEP MIDI FILES  ·  ACCENTS AND SLIDES INCLUDED")
+    elif t < 62.0:
+        scene_midi_presets(frame, t, t - 60.0)
+    elif t < 64.0:
+        scene_generator(frame, t, t - 62.0)
     else:
-        scene_end(frame, t, t - 57.0)
+        scene_end(frame, t, t - 64.0)
 
     # Whole-frame finishing.
     frame.alpha_composite(SCAN)
@@ -743,7 +912,7 @@ def render_frame(t):
         frame = Image.eval(frame, lambda v: int(v * k))
 
     # Glitch cuts.
-    cuts = (6.0, 14.0, 26.0, 33.0, 40.0, 46.0, 51.0, 53.0, 55.0, 57.0)
+    cuts = (6.0, 14.0, 24.0, 31.0, 39.0, 45.0, 51.0, 56.0, 58.0, 60.0, 62.0, 64.0)
     for cut in cuts:
         if 0 <= t - cut < 0.12:
             arr = np.array(frame)
@@ -791,7 +960,7 @@ def main():
     for i in range(total):
         t = i / FPS
         frame = render_frame(t)
-        if i == int(31.0 * FPS):
+        if i == int(34.0 * FPS):
             frame.save(poster_path)
         proc.stdin.write(frame.tobytes())
         if i % 150 == 0:

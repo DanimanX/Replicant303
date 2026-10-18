@@ -5,12 +5,15 @@
 // Internal tool: renders the plugin editor off-screen to a PNG so the panel can
 // be reviewed without opening a host. Used for the README preview.
 //
-//   generate_snapshot [output.png] [themeIndex] [drawerOpen]
+//   generate_snapshot [output.png] [themeIndex] [drawerOpen] [presetIndex]
 //
 // The editor is created with whatever skin is stored in the processor, and when
 // themeIndex is supplied the skin is then switched *live* through the public
 // ui_theme parameter before rendering - the same path the combo box takes - so
 // the resulting image also proves that runtime skin switching works.
+//
+// presetIndex (0..511) loads a vault slot before rendering, so the snapshot
+// shows the preset row and the name window exactly as a user would see them.
 
 int main(int argc, char* argv[])
 {
@@ -88,6 +91,26 @@ int main(int argc, char* argv[])
             std::cout << "[INFO] Pattern drawer: " << (open ? "open" : "closed") << std::endl;
         }
 
+    }
+
+    // Optionally load a vault slot (fourth argument), so screenshots show the
+    // preset row and name window with real content.
+    if (argc > 4)
+    {
+        const int presetIndex = juce::String (argv[4]).getIntValue();
+        const int bank = juce::jlimit (0, Replicant303::PresetBank::numBanks - 1,
+                                       presetIndex / Replicant303::PresetBank::presetsPerBank);
+        const int slot = juce::jlimit (0, Replicant303::PresetBank::presetsPerBank - 1,
+                                       presetIndex % Replicant303::PresetBank::presetsPerBank);
+
+        processor.loadPreset (bank, slot);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (250);
+
+        std::cout << "[INFO] Preset: "
+                  << Replicant303::PresetBank::getBankLetter (bank).toRawUTF8()
+                  << " " << (slot + 1) << " "
+                  << processor.getPresetBank().getPreset (bank, slot).name.toRawUTF8()
+                  << std::endl;
     }
 
     juce::Image img(juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);

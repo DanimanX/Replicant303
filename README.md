@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="assets/replicant303_promo_hardtechno_1080p.mp4">
-    <img src="assets/replicant303_promo_hardtechno_poster.png" alt="Replicant 303 — hard techno / acid promo, 1080p" width="950">
+    <img src="assets/replicant303_promo_hardtechno_poster.png" alt="Replicant 303 — hard techno / acid promo with the 8 x 64 preset vault, 1080p" width="950">
   </a>
 </p>
 
@@ -16,11 +16,28 @@
 </p>
 
 <p align="center">
-  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 UI in both skins: TD-3 Translucent Green and Obsidian Red, each with the LED tempo clock, skin selector and PATTERN drawer tab" width="950">
+  Replicant303 is free and open source. If it earns a place in your setup and you
+  feel like saying thanks, you can buy me a coffee — completely optional.
 </p>
 
 <p align="center">
-  <em>Both ship in the plugin — pick a skin from the selector in the header.</em>
+  <a href="https://paypal.me/DanimanX?locale.x=en_US&amp;country.x=CL">
+    <img src="https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&amp;logoColor=white&amp;style=for-the-badge" alt="Donate with PayPal">
+  </a>
+</p>
+
+<p align="center">
+  <sub><a href="https://paypal.me/DanimanX?locale.x=en_US&amp;country.x=CL">paypal.me/DanimanX</a></sub>
+</p>
+
+---
+
+<p align="center">
+  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 in both skins: TD-3 Translucent Green and Obsidian Red, each with the LED tempo clock, skin selector, PATTERN tab and the preset vault row" width="950">
+</p>
+
+<p align="center">
+  <em>Both skins ship in the plugin — pick one from the header selector. The preset vault row is part of the pattern drawer.</em>
 </p>
 
 ---
@@ -34,7 +51,7 @@ The panel ships with two selectable skins, chosen from the selector in the heade
 * **TD-3 Green** — inspired by the **Behringer TD-3 Translucent Green** edition.
 * **Obsidian Red** — black acrylic panel with red silkscreen lettering, copper traces and knob pointers.
 
-It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive dual envelopes, capacitor-modeled slide, and squelch accent) with an integrated **5-model distortion unit** led by the legendary **ProCo Rat ("Poco Rat")** pedal — and a **slide-down pattern core** that turns the plugin into a self-contained acid sequencer.
+It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive dual envelopes, capacitor-modeled slide, and squelch accent) with an integrated **5-model distortion unit** led by the legendary **ProCo Rat ("Poco Rat")** pedal, a **slide-down pattern core** with an **8 × 64 preset vault**, and portable **`.midi` presets** that carry the complete patch.
 
 ---
 
@@ -60,19 +77,43 @@ It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive 
 * **8 patterns × 16 steps:** patterns `A`–`H` are switched live from the drawer or from the hardware `BACK` / `WRITE / NEXT` buttons; the `START / STOP` button drives the transport (`Space` works too).
 * **Phoscyon-style editing:** a two-octave piano roll paints notes by dragging, right-click mutes a step, and dedicated **GATE / ACCENT / SLIDE** lanes toggle the 303 articulation per step. The inspector shows the selected step's note, octave and articulation.
 * **Musical controls:** pattern length (1–16), swing, internal clock or **host transport sync** (tempo and start/stop), and live step telemetry on the grid.
-* **Preset vault — 8 × 64:** every pattern letter `A`–`H` owns a bank of 64 complete presets (line + voice + distortion + tempo/swing), selectable from the `PRESET` row in the drawer with eight pages of eight slots. `GEN` creates a new procedural preset in the selected slot, `STORE` keeps the live edit, and `IMPORT` / `EXPORT` move `.midi` preset files.
-* **Portable `.midi` presets:** each preset is a Standard MIDI File that plays in any DAW (accents as velocity 110, slides as full-length notes) and embeds an `R303PRESET/1:` metadata event carrying the exact 303 voice. Plain MIDI files without metadata also import as patterns.
-* **Factory examples:** the original eight patterns ship in `presets/A` … `presets/H` as `.midi` examples; `generate_presets --all` writes the complete 512-preset bank.
-* **MIDI export:** `EXPORT MIDI` writes the current pattern as a Standard MIDI File (16th grid, accents as velocity 110, slides as full-length notes) ready to drag into any DAW.
-* **Saved with the plugin:** the full bank, active pattern, swing and sync mode persist in the plugin state, along with any stored/imported/generated preset overrides.
+* **Saved with the plugin:** the full bank, active pattern, swing and sync mode persist in the plugin state, along with any stored, imported or generated preset.
 
 <p align="center">
-  <img src="assets/replicant303_sequencer.png" alt="Replicant 303 pattern core drawer: 16-step piano roll, gate/accent/slide lanes, pattern slots A–H, preset vault and MIDI export" width="950">
+  <img src="assets/replicant303_sequencer.png" alt="Replicant 303 pattern core drawer: 16-step piano roll, gate/accent/slide lanes, pattern slots A–H and the preset vault row with GEN, STORE, IMPORT and EXPORT" width="950">
 </p>
+
+<p align="center">
+  <em>The pattern drawer, showing bank D / preset 09 loaded from the vault.</em>
+</p>
+
+### 🗄️ Preset Vault — 8 × 64
+* **512 complete presets:** every pattern letter `A`–`H` owns a bank of 64 patches. Each patch stores the acid line, the VCO/VCF/envelope settings, the distortion model and the tempo/swing.
+* **Two-level selection:** eight `PAGE` keys choose a page, eight numbered keys load a slot. Slot `01` of every bank is the original factory pattern for that letter.
+* **`GEN`, `STORE`, `IMPORT`, `EXPORT`:** generate a new procedural variation, capture the live edit, or move patches as `.midi` files — all from the hardware-style row in the drawer.
+* **Factory examples:** the original eight patterns ship as `.midi` files in `presets/A` … `presets/H`.
+
+[Read the full preset vault section ↓](#preset-vault)
+
+### 💣 5 Multi-Distortion Models
+
+| Model | Based On | Sound Character |
+|---|---|---|
+| **1. Poco Rat** | *ProCo Rat (LM308)* | Symmetrical silicon clipping with op-amp slew limiting and reverse Tone filter. The quintessential Acid Techno drive. |
+| **2. Tube Drive** | *Tube Screamer (TS9)* | Warm symmetrical soft clipping with mid-range boost. |
+| **3. Hard Clip** | *Boss DS-1* | Hard diode clipping with aggressive odd harmonics for Rave & Industrial. |
+| **4. German Fuzz** | *Germanium Fuzz Face* | Asymmetrical vintage fuzz with dynamic touch response. |
+| **5. Wavefolder** | *West-Coast Wavefolder* | Complex metallic wave-folding for aggressive modern acid timbres. |
 
 ---
 
+<a id="preset-vault"></a>
+
 ## 🗄️ Preset Vault
+
+<p align="center">
+  <img src="assets/replicant303_presets.png" alt="Preset vault: eight banks of 64 presets, with GEN, STORE, IMPORT and EXPORT" width="950">
+</p>
 
 The pattern drawer adds a hardware-style preset row under the step actions:
 
@@ -85,6 +126,14 @@ The pattern drawer adds a hardware-style preset row under the step actions:
   * an embedded `R303PRESET/1:` metadata event stores the complete patch (VCO, VCF, envelopes, distortion, swing and all 16 steps);
   * a plain MIDI file without that event still imports: notes map to the 16-step grid, velocity ≥ 100 becomes an accent and full-length notes become slides.
 
+<p align="center">
+  <img src="assets/replicant303_sequencer_obsidian_red.png" alt="Obsidian Red skin: pattern drawer with the preset vault row showing bank G / preset 17" width="760">
+</p>
+
+<p align="center">
+  <em>Obsidian Red, with bank G / preset 17 loaded.</em>
+</p>
+
 ### Preset examples
 
 The `presets/` folder contains the eight original factory patterns as `.midi` examples. They are generated by the same `PresetBank` code the plugin uses, so they can never drift from the in-plugin content:
@@ -95,18 +144,6 @@ ninja -C build generate_presets
 ./build/generate_presets --all           # full 8 x 64 factory bank
 ./build/generate_presets /tmp/vault --all
 ```
-
----
-
-### 💣 5 Multi-Distortion Models
-
-| Model | Based On | Sound Character |
-|---|---|---|
-| **1. Poco Rat** | *ProCo Rat (LM308)* | Symmetrical silicon clipping with op-amp slew limiting and reverse Tone filter. The quintessential Acid Techno drive. |
-| **2. Tube Drive** | *Tube Screamer (TS9)* | Warm symmetrical soft clipping with mid-range boost. |
-| **3. Hard Clip** | *Boss DS-1* | Hard diode clipping with aggressive odd harmonics for Rave & Industrial. |
-| **4. German Fuzz** | *Germanium Fuzz Face* | Asymmetrical vintage fuzz with dynamic touch response. |
-| **5. Wavefolder** | *West-Coast Wavefolder* | Complex metallic wave-folding for aggressive modern acid timbres. |
 
 ---
 
@@ -160,23 +197,27 @@ xvfb-run -a ./build/run_tests     # Linux, without a display
 ### Refreshing the panel screenshots
 
 `generate_snapshot` renders the editor off-screen to a PNG, so the README previews can be
-regenerated without opening a DAW. It takes an output path, an optional skin index and a
-drawer flag, and switches the skin live through the public `ui_theme` parameter before
-rendering:
+regenerated without opening a DAW. It takes an output path, an optional skin index, a
+drawer flag and an optional preset index (`bank × 64 + slot`), and switches the skin live
+through the public `ui_theme` parameter before rendering:
 
 ```bash
 ninja -C build generate_snapshot
+
 generate_snapshot assets/replicant303_ui.png 0 0                              # TD-3 Green
 generate_snapshot assets/replicant303_ui_obsidian_red.png 1 0                 # Obsidian Red
-generate_snapshot assets/replicant303_sequencer.png 0 1                       # Sequencer, green
-generate_snapshot assets/replicant303_sequencer_obsidian_red.png 1 1          # Sequencer, red
+generate_snapshot assets/replicant303_sequencer.png 0 1 200                   # drawer, bank D / preset 09
+generate_snapshot assets/replicant303_sequencer_obsidian_red.png 1 1 400      # drawer, bank G / preset 17
+
+python3 tools/make_preview.py    # rebuilds the two composite README images
 ```
 
 ### Promo video
 
 The 1080p promo is generated from the real panel screenshots and the plugin's own
 acid render (`tools/make_promo.py`); the soundtrack uses the pattern sequencer
-through the actual DSP path plus a synthesized hard-techno bed:
+through the actual DSP path plus a synthesized hard-techno bed. The new cut adds
+the preset vault, `.midi` presets and the procedural generator:
 
 ```bash
 ninja -C build render_audio_demo
@@ -193,22 +234,8 @@ Automated multi-platform builds run via `.github/workflows/build.yml` on every p
 * **Linux x86_64** (Ubuntu, Debian, Arch, Fedora)
 * **Windows x64** (Windows 10 / 11)
 
----
-
-## ☕ Support
-
-Replicant303 is free and open source. If it earns a place in your setup and you
-feel like saying thanks, you can buy me a coffee — completely optional.
-
-<p align="center">
-  <a href="https://paypal.me/DanimanX?locale.x=en_US&amp;country.x=CL">
-    <img src="https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&amp;logoColor=white&amp;style=for-the-badge" alt="Donate with PayPal">
-  </a>
-</p>
-
-<p align="center">
-  <sub><a href="https://paypal.me/DanimanX?locale.x=en_US&amp;country.x=CL">paypal.me/DanimanX</a></sub>
-</p>
+The Linux job also runs the headless regression suite and verifies that the
+checked-in `presets/` examples match the generator output.
 
 ---
 
