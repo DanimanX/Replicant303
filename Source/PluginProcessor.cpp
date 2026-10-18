@@ -17,13 +17,19 @@ Replicant303AudioProcessor::Replicant303AudioProcessor()
     accentParam       = apvts.getRawParameterValue("accent");
     volumeParam       = apvts.getRawParameterValue("volume");
     tempoParam        = apvts.getRawParameterValue("tempo");
+    tempoRangedParam  = apvts.getParameter("tempo");
     patternGroupParam = apvts.getRawParameterValue("pattern_group");
+    uiZoomParam       = apvts.getRawParameterValue("ui_zoom");
 
     distActiveParam   = apvts.getRawParameterValue("dist_active");
     distTypeParam   = apvts.getRawParameterValue("dist_type");
     distDriveParam  = apvts.getRawParameterValue("dist_drive");
     distToneParam   = apvts.getRawParameterValue("dist_tone");
     distMixParam    = apvts.getRawParameterValue("dist_mix");
+
+    // Default to Host sync so loading the plugin in a DAW follows the DAW
+    // tempo and transport out of the box.
+    sequencer.setSyncMode(Replicant303::PatternSequencer::SyncMode::Host);
 }
 
 Replicant303AudioProcessor::~Replicant303AudioProcessor() = default;
@@ -126,6 +132,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout Replicant303AudioProcessor::
         juce::ParameterID{ "ui_theme", 1 }, "UI Theme",
         Replicant303::ThemeManager::getThemeNames(), 0));
 
+    // 15. UI Zoom (50% to 300%; saved with the plugin state)
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ "ui_zoom", 1 }, "UI Zoom",
+        juce::NormalisableRange<float>(50.0f, 300.0f, 1.0f), 100.0f,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
+
     return { params.begin(), params.end() };
 }
 
@@ -137,6 +149,9 @@ void Replicant303AudioProcessor::prepareToPlay(double sampleRate, int /*samplesP
     // sequencer kept its 44.1 kHz default and played at the wrong tempo in
     // every 48/96 kHz session.
     sequencer.prepare(sampleRate);
+
+    hasSyncedInitialHostTempo = false;
+    syncHostPlayHead();
 }
 
 void Replicant303AudioProcessor::releaseResources()
@@ -199,6 +214,50 @@ void Replicant303AudioProcessor::updateParameters() noexcept
         synthEngine.setDistortionMix(distMixParam->load());
 }
 
+void Replicant303AudioProcessor::syncHostPlayHead() noexcept
+{
+    double hostBpm = 0.0;
+    bool hostPlaying = false;
+
+    if (auto* hostPlayHead = getPlayHead())
+    {
+        if (auto position = hostPlayHead->getPosition())
+        {
+            if (auto bpm = position->getBpm())
+            {
+                if (*bpm > 1.0)
+                    hostBpm = *bpm;
+            }
+
+            hostPlaying = position->getIsPlaying();
+        }
+    }
+
+    if (hostBpm > 1.0)
+    {
+        const bool hostBpmChanged = ! hasSyncedInitialHostTempo
+                                    || std::abs(hostBpm - lastHostBpm) > 0.01;
+        hasSyncedInitialHostTempo = true;
+        lastHostBpm = hostBpm;
+
+        if (sequencer.getSyncMode() == Replicant303::PatternSequencer::SyncMode::Host
+            || hostBpmChanged)
+        {
+            const float clampedHostBpm = juce::jlimit(40.0f, 300.0f, (float) hostBpm);
+            if (tempoRangedParam != nullptr && tempoParam != nullptr
+                && std::abs(tempoParam->load() - clampedHostBpm) > 0.05f)
+            {
+                tempoRangedParam->setValueNotifyingHost(
+                    tempoRangedParam->convertTo0to1(clampedHostBpm));
+            }
+        }
+    }
+
+    const double paramBpm = tempoParam != nullptr ? (double) tempoParam->load() : 125.0;
+    sequencer.setTempo(paramBpm);
+    sequencer.setHostState(hostPlaying, hostBpm);
+}
+
 void Replicant303AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -213,22 +272,7 @@ void Replicant303AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     // Transport / clock: the host play head supplies tempo and play state for
     // the Host sync mode; the internal mode uses the tempo parameter.
     // -------------------------------------------------------------------------
-    double hostBpm = 0.0;
-    bool hostPlaying = false;
-
-    if (auto* hostPlayHead = getPlayHead())
-    {
-        if (auto position = hostPlayHead->getPosition())
-        {
-            if (auto bpm = position->getBpm())
-                hostBpm = *bpm;
-
-            hostPlaying = position->getIsPlaying();
-        }
-    }
-
-    sequencer.setTempo(tempoParam != nullptr ? (double) tempoParam->load() : 125.0);
-    sequencer.setHostState(hostPlaying, hostBpm);
+    syncHostPlayHead();
 
     // -------------------------------------------------------------------------
     // Merge host MIDI + on-screen keyboard + sequencer into one sample-accurate
@@ -276,16 +320,25 @@ void Replicant303AudioProcessor::setStateInformation(const void* data, int sizeI
     if (xmlState != nullptr && xmlState->hasTagName(apvts.state.getType()))
     {
         auto tree = juce::ValueTree::fromXml(*xmlState);
+        const auto seqTree = tree.getChildWithName("SEQUENCER");
         presetBank.restoreFromValueTree(tree.getChildWithName("PRESETBANK"));
-        sequencer.restoreFromValueTree(tree.getChildWithName("SEQUENCER"));
+        sequencer.restoreFromValueTree(seqTree);
+        if (! seqTree.isValid() || ! seqTree.hasProperty("syncMode"))
+            sequencer.setSyncMode(Replicant303::PatternSequencer::SyncMode::Host);
+
         apvts.replaceState(tree);
+
+        // Re-sync with the DAW playhead on the next audio block so a restored
+        // state adopts the host's current project tempo.
+        hasSyncedInitialHostTempo = false;
+        lastHostBpm = 0.0;
+        syncHostPlayHead();
     }
 }
 
 bool Replicant303AudioProcessor::exportPatternToMidi(const juce::File& file, int patternIndex)
 {
-    const double bpm = tempoParam != nullptr ? (double) tempoParam->load() : 125.0;
-    return sequencer.writeMidiFile(file, patternIndex, bpm);
+    return sequencer.writeMidiFile(file, patternIndex, sequencer.getEffectiveTempo());
 }
 
 // ------------------------------------------------------------------------------
@@ -322,7 +375,13 @@ void Replicant303AudioProcessor::loadPreset(int bank, int slot)
     setParameterValue("env_mod", preset.envMod);
     setParameterValue("decay", preset.decay);
     setParameterValue("accent", preset.accent);
-    setParameterValue("tempo", preset.tempo);
+
+    // In Host sync inside a DAW, preserve the DAW's tempo rather than
+    // overwriting it with the preset's offline tempo.
+    const bool followHostTempo = (sequencer.getSyncMode() == Replicant303::PatternSequencer::SyncMode::Host
+                                  && sequencer.getHostTempo() > 1.0);
+    setParameterValue("tempo", followHostTempo ? (float) sequencer.getHostTempo() : preset.tempo);
+
     setParameterValue("dist_active", preset.distActive ? 1.0f : 0.0f);
     setParameterValue("dist_type", (float) preset.distType);
     setParameterValue("dist_drive", preset.distDrive);

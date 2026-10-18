@@ -385,4 +385,23 @@ namespace Replicant303
     {
         return juce::Font(uiFont(15.0f));
     }
+
+    void Replicant303LookAndFeel::drawCornerResizer(juce::Graphics& g, int w, int h,
+                                                    bool isMouseOver, bool isMouseDragging)
+    {
+        const auto& t = theme();
+        const juce::Colour gripCol = (isMouseDragging || isMouseOver)
+                                         ? t.ledBright
+                                         : t.silkscreen.withAlpha(0.70f);
+
+        g.setColour(gripCol);
+        const float fw = (float) w;
+        const float fh = (float) h;
+
+        for (int i = 0; i < 3; ++i)
+        {
+            const float offset = 4.0f + (float) i * 4.0f;
+            g.drawLine(fw - offset, fh - 2.0f, fw - 2.0f, fh - offset, 1.5f);
+        }
+    }
 }

@@ -26,7 +26,36 @@ public:
     void setPatternDrawerOpen(bool shouldBeOpen, bool animate = true);
     bool isPatternDrawerOpen() const noexcept { return drawerOpen; }
 
+    /** Adjusts the UI zoom factor (clamped to 0.50 .. 3.00, i.e. 50% .. 300%). */
+    void setZoomFactor(float newZoom);
+    float getZoomFactor() const noexcept { return zoomFactor; }
+
 private:
+    class PanelCanvas : public juce::Component
+    {
+    public:
+        explicit PanelCanvas(Replicant303AudioProcessorEditor& o) : owner(o)
+        {
+            setInterceptsMouseClicks(true, true);
+        }
+
+        void paint(juce::Graphics& g) override { owner.paintCanvas(g); }
+        void mouseDown(const juce::MouseEvent& e) override { owner.canvasMouseDown(e); }
+        void mouseUp(const juce::MouseEvent& e) override { owner.canvasMouseUp(e); }
+        void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override
+        {
+            owner.canvasMouseWheelMove(e, wheel);
+        }
+
+    private:
+        Replicant303AudioProcessorEditor& owner;
+    };
+
+    void paintCanvas(juce::Graphics& g);
+    void canvasMouseDown(const juce::MouseEvent& e);
+    void canvasMouseUp(const juce::MouseEvent& e);
+    void canvasMouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel);
+
     void timerCallback() override;
 
     /** Fired by the ThemeManager whenever the user picks another panel skin. */
@@ -40,6 +69,7 @@ private:
 
     Replicant303AudioProcessor& audioProcessor;
     Replicant303::Replicant303LookAndFeel customLookAndFeel;
+    PanelCanvas contentCanvas { *this };
 
     // -------------------------------------------------------------------------
     // Sliders & Attachments
@@ -82,6 +112,18 @@ private:
 
     juce::ComboBox themeBox;     // Panel skin selector (Green / Black-Red / ...)
     std::unique_ptr<juce::ParameterAttachment> themeAttachment;
+
+    juce::ComboBox zoomBox;      // UI Zoom selector (50% - 300%)
+    std::unique_ptr<juce::ParameterAttachment> zoomAttachment;
+    float zoomFactor = Replicant303::Layout::defaultZoomFactor;
+    bool isApplyingProgrammaticSize = false;
+    bool ignoreZoomAttachmentCallback = false;
+
+    void syncZoomBoxText();
+    int getUnscaledHeight() const noexcept;
+    void applyWindowSizeForZoom();
+    void updateCanvasTransform();
+    void layoutCanvasChildren();
 
     // -------------------------------------------------------------------------
     // Interactive 13-Key Keyboard & Function Buttons (Bottom Section)

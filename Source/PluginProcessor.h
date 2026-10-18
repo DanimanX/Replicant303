@@ -102,7 +102,9 @@ private:
     std::atomic<float>* accentParam = nullptr;
     std::atomic<float>* volumeParam = nullptr;
     std::atomic<float>* tempoParam = nullptr;
+    juce::RangedAudioParameter* tempoRangedParam = nullptr;
     std::atomic<float>* patternGroupParam = nullptr;
+    std::atomic<float>* uiZoomParam = nullptr;
 
     std::atomic<float>* distActiveParam = nullptr;
     std::atomic<float>* distTypeParam = nullptr;
@@ -110,7 +112,11 @@ private:
     std::atomic<float>* distToneParam = nullptr;
     std::atomic<float>* distMixParam = nullptr;
 
+    bool hasSyncedInitialHostTempo = false;
+    double lastHostBpm = 0.0;
+
     void updateParameters() noexcept;
+    void syncHostPlayHead() noexcept;
 
     /** Sets one APVTS parameter from a plain (not normalised) value. */
     void setParameterValue(const juce::String& parameterId, float plainValue);

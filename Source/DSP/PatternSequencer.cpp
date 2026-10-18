@@ -50,15 +50,27 @@ namespace Replicant303
     void PatternSequencer::start() noexcept
     {
         playRequested.store (true, std::memory_order_relaxed);
+
+        if (getSyncMode() == SyncMode::Host && ! hostPlaying.load (std::memory_order_relaxed))
+            manualPlayWhileHostStopped.store (true, std::memory_order_relaxed);
     }
 
     void PatternSequencer::stop() noexcept
     {
+        if (getSyncMode() == SyncMode::Host
+            && ! hostPlaying.load (std::memory_order_relaxed)
+            && manualPlayWhileHostStopped.exchange (false, std::memory_order_relaxed))
+        {
+            return;
+        }
+
+        manualPlayWhileHostStopped.store (false, std::memory_order_relaxed);
         playRequested.store (false, std::memory_order_relaxed);
     }
 
     void PatternSequencer::setSyncMode (SyncMode mode) noexcept
     {
+        manualPlayWhileHostStopped.store (false, std::memory_order_relaxed);
         syncMode.store ((int) mode, std::memory_order_relaxed);
 
         // Switching to the host clock arms the transport: the host's play state
@@ -67,7 +79,7 @@ namespace Replicant303
             playRequested.store (true, std::memory_order_relaxed);
     }
 
-    double PatternSequencer::computeStepSamples() const noexcept
+    double PatternSequencer::getEffectiveTempo() const noexcept
     {
         const auto mode = (SyncMode) syncMode.load (std::memory_order_relaxed);
         double bpm = tempoBpm.load (std::memory_order_relaxed);
@@ -79,7 +91,12 @@ namespace Replicant303
                 bpm = host;
         }
 
-        bpm = juce::jlimit (20.0, 400.0, bpm);
+        return juce::jlimit (20.0, 400.0, bpm);
+    }
+
+    double PatternSequencer::computeStepSamples() const noexcept
+    {
+        const double bpm = getEffectiveTempo();
         return sampleRate * 60.0 / bpm / 4.0; // one 16th note
     }
 
@@ -89,12 +106,18 @@ namespace Replicant303
         applyPendingReset (midiOut);
 
         const auto mode = (SyncMode) syncMode.load (std::memory_order_relaxed);
+        const bool hostIsRolling = hostPlaying.load (std::memory_order_relaxed);
+
+        if (hostIsRolling)
+            manualPlayWhileHostStopped.store (false, std::memory_order_relaxed);
 
         // In Host mode the transport follows the host *and* the local PLAY
-        // request, so STOP still works and PLAY does not fight the DAW.
+        // request (or an explicit manual preview while the host is stopped),
+        // so STOP still works and PLAY does not fight the DAW.
         const bool wantRunning = (mode == SyncMode::Host)
                                     ? (playRequested.load (std::memory_order_relaxed)
-                                       && hostPlaying.load (std::memory_order_relaxed))
+                                       && (hostIsRolling
+                                           || manualPlayWhileHostStopped.load (std::memory_order_relaxed)))
                                     : playRequested.load (std::memory_order_relaxed);
 
         if (wantRunning != running.load (std::memory_order_relaxed))

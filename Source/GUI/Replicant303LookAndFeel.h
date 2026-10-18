@@ -47,6 +47,9 @@ namespace Replicant303
         juce::Font getComboBoxFont(juce::ComboBox& box) override;
         juce::Font getPopupMenuFont() override;
 
+        void drawCornerResizer(juce::Graphics& g, int w, int h,
+                               bool isMouseOver, bool isMouseDragging) override;
+
         // Helpers for drawing authentic hardware elements
         static void drawKnobTicks(juce::Graphics& g, float centerX, float centerY, float radius,
                                  float startAngle, float endAngle, int numTicks = 11);

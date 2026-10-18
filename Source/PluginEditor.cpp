@@ -1,14 +1,23 @@
 #include "PluginEditor.h"
 
+namespace
+{
+    constexpr int kNumZoomPresets = 9;
+    constexpr int kZoomPercentages[kNumZoomPresets] =
+        { 50, 75, 100, 125, 150, 175, 200, 250, 300 };
+}
+
 Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303AudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
+    addAndMakeVisible(contentCanvas);
+
     // -------------------------------------------------------------------------
     // 0. Panel skin: restore the saved skin, then bind the selector combo box.
     //    This must happen before anything is painted.
     // -------------------------------------------------------------------------
     themeBox.addItemList(Replicant303::ThemeManager::getThemeNames(), 1);
-    addAndMakeVisible(themeBox);
+    contentCanvas.addAndMakeVisible(themeBox);
 
     if (auto* themeParam = audioProcessor.apvts.getParameter("ui_theme"))
     {
@@ -29,6 +38,37 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
         if (themeAttachment != nullptr)
             themeAttachment->setValueAsCompleteGesture(
                 Replicant303::ThemeManager::indexToNormalized(themeBox.getSelectedId() - 1));
+    };
+
+    // -------------------------------------------------------------------------
+    // 0b. UI Zoom selector (50% to 300%) + resizable window support.
+    // -------------------------------------------------------------------------
+    for (int i = 0; i < kNumZoomPresets; ++i)
+        zoomBox.addItem(juce::String(kZoomPercentages[i]) + "%", i + 1);
+
+    contentCanvas.addAndMakeVisible(zoomBox);
+
+    if (auto* zoomParam = audioProcessor.apvts.getParameter("ui_zoom"))
+    {
+        zoomAttachment = std::make_unique<juce::ParameterAttachment>(
+            *zoomParam,
+            [this](float plainPercent)
+            {
+                if (ignoreZoomAttachmentCallback)
+                    return;
+
+                const juce::ScopedValueSetter<bool> guard(ignoreZoomAttachmentCallback, true);
+                setZoomFactor(plainPercent / 100.0f);
+            });
+
+        zoomAttachment->sendInitialUpdate();
+    }
+
+    zoomBox.onChange = [this]()
+    {
+        const int id = zoomBox.getSelectedId();
+        if (id >= 1 && id <= kNumZoomPresets)
+            setZoomFactor((float) kZoomPercentages[id - 1] / 100.0f);
     };
 
     Replicant303::ThemeManager::getInstance().addChangeListener(this);
@@ -54,12 +94,19 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
     setupKnob(distTypeKnob,  "dist_type",     "MODE",     true);
     setupKnob(volumeKnob,    "volume",        "VOLUME",   true);
 
+    tempoKnob.slider.onDragStart = [this]() {
+        // Turning the TEMPO knob manually disengages Host sync so the user can
+        // freely dial in an internal tempo without the DAW overriding it.
+        audioProcessor.getSequencer().setSyncMode(Replicant303::PatternSequencer::SyncMode::Internal);
+    };
+
     tempoKnob.slider.onValueChange = [this]() {
-        repaint(495, 8, 143, 40);
+        contentCanvas.repaint((int) Replicant303::Layout::tempoBoxX - 6, 8,
+                              (int) Replicant303::Layout::tempoBoxW + 12, 40);
     };
 
     // 4. Waveform Slide Switch (Saw / Square)
-    addAndMakeVisible(waveformSwitch);
+    contentCanvas.addAndMakeVisible(waveformSwitch);
     waveformSwitch.setButtonText("");
     auto* waveParam = audioProcessor.apvts.getParameter("waveform");
     if (waveParam != nullptr)
@@ -68,11 +115,11 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
     waveformSwitch.onClick = [this, waveParam]() {
         if (waveParam != nullptr)
             waveParam->setValueNotifyingHost(waveformSwitch.getToggleState() ? 1.0f : 0.0f);
-        repaint();
+        contentCanvas.repaint();
     };
 
     // 5. Distortion On/Off Slide Switch
-    addAndMakeVisible(distActiveSwitch);
+    contentCanvas.addAndMakeVisible(distActiveSwitch);
     distActiveSwitch.setButtonText("");
     distActiveAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         audioProcessor.apvts, "dist_active", distActiveSwitch);
@@ -83,7 +130,7 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
     distModelBox.addItem("3. Hard Clip", 3);
     distModelBox.addItem("4. German Fuzz", 4);
     distModelBox.addItem("5. Wavefolder", 5);
-    addAndMakeVisible(distModelBox);
+    contentCanvas.addAndMakeVisible(distModelBox);
     distModelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.apvts, "dist_type", distModelBox);
 
@@ -95,12 +142,14 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
     patternDrawer = std::make_unique<PatternDrawer>(audioProcessor);
     patternDrawer->onCloseRequested = [this]() { setPatternDrawerOpen(false); };
     patternDrawer->syncPresetSelection();
-    addChildComponent(*patternDrawer);
+    contentCanvas.addChildComponent(*patternDrawer);
     patternDrawer->setBounds(0, Replicant303::Layout::panelHeight,
                              Replicant303::Layout::panelWidth, PatternDrawer::drawerHeight);
 
     setWantsKeyboardFocus(true);
-    setSize(Replicant303::Layout::panelWidth, Replicant303::Layout::panelHeight);
+    setResizable(true, true);
+    syncZoomBoxText();
+    applyWindowSizeForZoom();
     startTimerHz(30); // 30 FPS reactive LEDs
 }
 
@@ -122,6 +171,7 @@ void Replicant303AudioProcessorEditor::changeListenerCallback(juce::ChangeBroadc
     if (patternDrawer != nullptr)
         patternDrawer->repaint();
 
+    contentCanvas.repaint();
     repaint();
 }
 
@@ -129,7 +179,7 @@ void Replicant303AudioProcessorEditor::setupKnob(ControlKnob& knob, const juce::
 {
     knob.slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     knob.slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    addAndMakeVisible(knob.slider);
+    contentCanvas.addAndMakeVisible(knob.slider);
 
     if (!hideLabel)
     {
@@ -138,7 +188,7 @@ void Replicant303AudioProcessorEditor::setupKnob(ControlKnob& knob, const juce::
         knob.label.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
         // No explicit text colour: the LookAndFeel supplies it, so the label
         // follows a skin change instead of being frozen at construction time.
-        addAndMakeVisible(knob.label);
+        contentCanvas.addAndMakeVisible(knob.label);
     }
 
     knob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -224,16 +274,44 @@ void Replicant303AudioProcessorEditor::setupKeyboardLayout()
 
     // Far Right Controls
     functionButtons.push_back({ "BACK",   juce::Rectangle<float>(922.0f, 330.0f, 38.0f, 28.0f), juce::Point<float>(941.0f, 312.0f), true, false, "DEL", "" });
-    functionButtons.push_back({ "SYNC",   juce::Rectangle<float>(922.0f, 430.0f, 38.0f, 28.0f), juce::Point<float>(941.0f, 412.0f), true, false, "D.S.", "" });
+    functionButtons.push_back({ "SYNC",   juce::Rectangle<float>(922.0f, 430.0f, 38.0f, 28.0f), juce::Point<float>(941.0f, 412.0f), true, true,  "D.S.", "" });
     functionButtons.push_back({ "WRITE / NEXT", juce::Rectangle<float>(984.0f, 442.0f, 54.0f, 54.0f), juce::Point<float>(1011.0f, 428.0f), true, false, "TAP", "" });
 }
 
 void Replicant303AudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
 {
+    canvasMouseDown(e.getEventRelativeTo(&contentCanvas));
+}
+
+void Replicant303AudioProcessorEditor::mouseUp(const juce::MouseEvent& e)
+{
+    canvasMouseUp(e.getEventRelativeTo(&contentCanvas));
+}
+
+void Replicant303AudioProcessorEditor::canvasMouseWheelMove(const juce::MouseEvent& e,
+                                                            const juce::MouseWheelDetails& wheel)
+{
+    const auto zoomRect = juce::Rectangle<float>((float) Replicant303::Layout::zoomBoxX,
+                                                 (float) Replicant303::Layout::zoomBoxY,
+                                                 (float) Replicant303::Layout::zoomBoxW,
+                                                 (float) Replicant303::Layout::zoomBoxH);
+
+    if (e.mods.isCommandDown() || e.mods.isCtrlDown() || zoomRect.contains(e.position))
+    {
+        if (std::abs(wheel.deltaY) > 0.001f)
+        {
+            const float step = (wheel.deltaY > 0.0f) ? 0.05f : -0.05f;
+            setZoomFactor(std::round((zoomFactor + step) * 20.0f) / 20.0f);
+        }
+    }
+}
+
+void Replicant303AudioProcessorEditor::canvasMouseDown(const juce::MouseEvent& e)
+{
     auto pos = e.position;
 
     // 0. Header tab that opens / closes the pattern drawer.
-    const juce::Rectangle<float> seqTab (Replicant303::Layout::seqTabX,
+    const juce::Rectangle<float> seqTab(Replicant303::Layout::seqTabX,
                                         Replicant303::Layout::seqTabY,
                                         Replicant303::Layout::seqTabW,
                                         Replicant303::Layout::seqTabH);
@@ -251,7 +329,7 @@ void Replicant303AudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
             key.isPressed = true;
             activePlayedKey = key.midiNote;
             audioProcessor.getKeyboardState().noteOn(1, key.midiNote, 0.9f);
-            repaint();
+            contentCanvas.repaint();
             return;
         }
     }
@@ -264,7 +342,7 @@ void Replicant303AudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
             key.isPressed = true;
             activePlayedKey = key.midiNote;
             audioProcessor.getKeyboardState().noteOn(1, key.midiNote, 0.9f);
-            repaint();
+            contentCanvas.repaint();
             return;
         }
     }
@@ -280,10 +358,17 @@ void Replicant303AudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
         if (btn.label == "START / STOP")
         {
             auto& sequencer = audioProcessor.getSequencer();
-            if (sequencer.isTransportArmed())
+            if (sequencer.isPlaying())
                 sequencer.stop();
             else
                 sequencer.start();
+        }
+        else if (btn.label == "SYNC")
+        {
+            auto& sequencer = audioProcessor.getSequencer();
+            const bool isHost = sequencer.getSyncMode() == Replicant303::PatternSequencer::SyncMode::Host;
+            sequencer.setSyncMode(isHost ? Replicant303::PatternSequencer::SyncMode::Internal
+                                         : Replicant303::PatternSequencer::SyncMode::Host);
         }
         else if (btn.label == "WRITE / NEXT")
         {
@@ -298,12 +383,12 @@ void Replicant303AudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
             btn.isLit = ! btn.isLit;
         }
 
-        repaint();
+        contentCanvas.repaint();
         return;
     }
 }
 
-void Replicant303AudioProcessorEditor::mouseUp(const juce::MouseEvent& /*e*/)
+void Replicant303AudioProcessorEditor::canvasMouseUp(const juce::MouseEvent& /*e*/)
 {
     if (activePlayedKey != -1)
     {
@@ -313,7 +398,7 @@ void Replicant303AudioProcessorEditor::mouseUp(const juce::MouseEvent& /*e*/)
             key.isPressed = false;
 
         activePlayedKey = -1;
-        repaint();
+        contentCanvas.repaint();
     }
 }
 
@@ -324,20 +409,20 @@ void Replicant303AudioProcessorEditor::timerCallback()
     {
         const double now = juce::Time::getMillisecondCounterHiRes();
         const float t = juce::jlimit(0.0f, 1.0f, (float) ((now - drawerAnimStartMs) / 220.0));
-        const float eased = 1.0f - std::pow (1.0f - t, 3.0f);
+        const float eased = 1.0f - std::pow(1.0f - t, 3.0f);
         const float target = drawerOpen ? 1.0f : 0.0f;
 
         drawerProgress = drawerAnimFrom + (target - drawerAnimFrom) * eased;
         applyDrawerProgress();
-        repaint ((int) Replicant303::Layout::seqTabX, (int) Replicant303::Layout::seqTabY,
-                 (int) Replicant303::Layout::seqTabW, (int) Replicant303::Layout::seqTabH);
+        contentCanvas.repaint((int) Replicant303::Layout::seqTabX, (int) Replicant303::Layout::seqTabY,
+                              (int) Replicant303::Layout::seqTabW, (int) Replicant303::Layout::seqTabH);
 
         if (t >= 1.0f)
         {
             drawerAnimating = false;
             drawerProgress = target;
             applyDrawerProgress();
-            startTimerHz (30);
+            startTimerHz(30);
         }
     }
 
@@ -352,19 +437,31 @@ void Replicant303AudioProcessorEditor::timerCallback()
     bool slideOn = engine.isSlideActive();
     bool accentOn = engine.isAccentActive();
     int lastNote = engine.getLastMidiNote();
+    const bool syncOn = (sequencer.getSyncMode() == Replicant303::PatternSequencer::SyncMode::Host);
+
+    // Keep the TEMPO knob aligned when following the DAW clock.
+    if (syncOn && sequencer.getHostTempo() > 1.0 && ! tempoKnob.slider.isMouseButtonDown())
+    {
+        const double hostBpm = juce::jlimit(40.0, 300.0, sequencer.getEffectiveTempo());
+        if (std::abs(tempoKnob.slider.getValue() - hostBpm) > 0.05)
+            tempoKnob.slider.setValue(hostBpm, juce::dontSendNotification);
+    }
 
     for (auto& btn : functionButtons)
     {
-        if (btn.label == "SLIDE")  btn.isLit = slideOn;
-        if (btn.label == "ACCENT") btn.isLit = accentOn;
+        if (btn.label == "SLIDE")        btn.isLit = slideOn;
+        if (btn.label == "ACCENT")       btn.isLit = accentOn;
         if (btn.label == "START / STOP") btn.isLit = sequencer.isPlaying();
+        if (btn.label == "SYNC")         btn.isLit = syncOn;
     }
 
     for (auto& key : pianoKeys)
         key.isPressed = (key.isPressed || key.midiNote == (lastNote % 12 + 36));
 
-    repaint (495, 8, 143, 40);
-    repaint (0, 245, getWidth(), Replicant303::Layout::panelHeight - 245);
+    contentCanvas.repaint((int) Replicant303::Layout::tempoBoxX - 6, 8,
+                          (int) Replicant303::Layout::tempoBoxW + 12, 40);
+    contentCanvas.repaint(0, 245, Replicant303::Layout::panelWidth,
+                          Replicant303::Layout::panelHeight - 245);
 }
 
 void Replicant303AudioProcessorEditor::syncPatternGroup()
@@ -401,7 +498,104 @@ void Replicant303AudioProcessorEditor::syncPatternGroup()
 }
 
 //==============================================================================
-void Replicant303AudioProcessorEditor::setPatternDrawerOpen (bool shouldBeOpen, bool animate)
+int Replicant303AudioProcessorEditor::getUnscaledHeight() const noexcept
+{
+    const bool fullyClosed = (! drawerOpen && ! drawerAnimating && drawerProgress <= 0.001f);
+    return Replicant303::Layout::panelHeight + (fullyClosed ? 0 : PatternDrawer::drawerHeight);
+}
+
+void Replicant303AudioProcessorEditor::setZoomFactor(float newZoom)
+{
+    const float clamped = juce::jlimit(Replicant303::Layout::minZoomFactor,
+                                       Replicant303::Layout::maxZoomFactor,
+                                       newZoom);
+    zoomFactor = clamped;
+    syncZoomBoxText();
+
+    if (! ignoreZoomAttachmentCallback && zoomAttachment != nullptr)
+    {
+        const juce::ScopedValueSetter<bool> guard(ignoreZoomAttachmentCallback, true);
+        zoomAttachment->setValueAsCompleteGesture(zoomFactor * 100.0f);
+    }
+
+    applyWindowSizeForZoom();
+}
+
+void Replicant303AudioProcessorEditor::syncZoomBoxText()
+{
+    const int pct = juce::roundToInt(zoomFactor * 100.0f);
+    int matchedId = 0;
+
+    for (int i = 0; i < kNumZoomPresets; ++i)
+    {
+        if (kZoomPercentages[i] == pct)
+        {
+            matchedId = i + 1;
+            break;
+        }
+    }
+
+    if (matchedId > 0)
+        zoomBox.setSelectedId(matchedId, juce::dontSendNotification);
+    else
+        zoomBox.setText(juce::String(pct) + "%", juce::dontSendNotification);
+}
+
+void Replicant303AudioProcessorEditor::applyWindowSizeForZoom()
+{
+    const juce::ScopedValueSetter<bool> guard(isApplyingProgrammaticSize, true);
+
+    const int baseW = Replicant303::Layout::panelWidth;
+    const int baseH = getUnscaledHeight();
+    const int targetW = juce::roundToInt((float) baseW * zoomFactor);
+    const int targetH = juce::roundToInt((float) baseH * zoomFactor);
+
+    // Relax the aspect ratio before changing between collapsed/expanded heights
+    // so the constrainer does not clamp against the outgoing aspect ratio.
+    if (auto* c = getConstrainer())
+        c->setFixedAspectRatio(0.0);
+
+    setResizeLimits(juce::roundToInt((float) baseW * Replicant303::Layout::minZoomFactor),
+                    juce::roundToInt((float) Replicant303::Layout::panelHeight * Replicant303::Layout::minZoomFactor),
+                    juce::roundToInt((float) baseW * Replicant303::Layout::maxZoomFactor),
+                    juce::roundToInt((float) (Replicant303::Layout::panelHeight + PatternDrawer::drawerHeight)
+                                     * Replicant303::Layout::maxZoomFactor));
+
+    setSize(targetW, targetH);
+
+    if (auto* c = getConstrainer())
+        c->setFixedAspectRatio((double) baseW / (double) baseH);
+
+    setResizeLimits(juce::roundToInt((float) baseW * Replicant303::Layout::minZoomFactor),
+                    juce::roundToInt((float) baseH * Replicant303::Layout::minZoomFactor),
+                    juce::roundToInt((float) baseW * Replicant303::Layout::maxZoomFactor),
+                    juce::roundToInt((float) baseH * Replicant303::Layout::maxZoomFactor));
+
+    updateCanvasTransform();
+}
+
+void Replicant303AudioProcessorEditor::updateCanvasTransform()
+{
+    const int baseW = Replicant303::Layout::panelWidth;
+    const int baseH = getUnscaledHeight();
+    contentCanvas.setBounds(0, 0, baseW, baseH);
+
+    if (getWidth() <= 0 || getHeight() <= 0)
+        return;
+
+    const float scaleX = (float) getWidth() / (float) baseW;
+    const float scaleY = (float) getHeight() / (float) baseH;
+    const float scale = juce::jlimit(Replicant303::Layout::minZoomFactor,
+                                     Replicant303::Layout::maxZoomFactor,
+                                     juce::jmin(scaleX, scaleY));
+    const float offsetX = ((float) getWidth() - (float) baseW * scale) * 0.5f;
+    const float offsetY = ((float) getHeight() - (float) baseH * scale) * 0.5f;
+
+    contentCanvas.setTransform(juce::AffineTransform::scale(scale).translated(offsetX, offsetY));
+}
+
+//==============================================================================
+void Replicant303AudioProcessorEditor::setPatternDrawerOpen(bool shouldBeOpen, bool animate)
 {
     drawerOpen = shouldBeOpen;
 
@@ -413,7 +607,8 @@ void Replicant303AudioProcessorEditor::setPatternDrawerOpen (bool shouldBeOpen, 
         drawerAnimating = false;
         drawerProgress = shouldBeOpen ? 1.0f : 0.0f;
         applyDrawerProgress();
-        startTimerHz (30);
+        startTimerHz(30);
+        contentCanvas.repaint();
         repaint();
         return;
     }
@@ -424,57 +619,52 @@ void Replicant303AudioProcessorEditor::setPatternDrawerOpen (bool shouldBeOpen, 
 
     if (patternDrawer != nullptr)
     {
-        patternDrawer->setVisible (true);
-        patternDrawer->setRevealOffset ((1.0f - drawerProgress) * (float) PatternDrawer::drawerHeight);
+        patternDrawer->setVisible(true);
+        patternDrawer->setRevealOffset((1.0f - drawerProgress) * (float) PatternDrawer::drawerHeight);
     }
 
     // Resize once up front; the drawer itself animates inside that space, so
     // the host is not asked to resize the plugin window on every frame.
     if (shouldBeOpen)
-        setSize (Replicant303::Layout::panelWidth,
-                 Replicant303::Layout::panelHeight + PatternDrawer::drawerHeight);
+        applyWindowSizeForZoom();
 
-    startTimerHz (60);
+    startTimerHz(60);
+    contentCanvas.repaint();
     repaint();
 }
 
 void Replicant303AudioProcessorEditor::applyDrawerProgress()
 {
-    const bool fullyOpen = drawerProgress >= 0.999f;
-    const bool fullyClosed = drawerProgress <= 0.001f;
+    const bool fullyClosed = (! drawerOpen && ! drawerAnimating && drawerProgress <= 0.001f);
 
-    const int height = fullyOpen ? PatternDrawer::drawerHeight
-                                 : (fullyClosed ? 0 : PatternDrawer::drawerHeight);
-
-    setSize (Replicant303::Layout::panelWidth,
-             Replicant303::Layout::panelHeight + height);
+    applyWindowSizeForZoom();
 
     if (patternDrawer != nullptr)
     {
-        patternDrawer->setBounds (0, Replicant303::Layout::panelHeight,
-                                  getWidth(), PatternDrawer::drawerHeight);
-        patternDrawer->setRevealOffset ((1.0f - drawerProgress) * (float) PatternDrawer::drawerHeight);
-        patternDrawer->setVisible (! fullyClosed);
+        patternDrawer->setBounds(0, Replicant303::Layout::panelHeight,
+                                 Replicant303::Layout::panelWidth, PatternDrawer::drawerHeight);
+        patternDrawer->setRevealOffset((1.0f - drawerProgress) * (float) PatternDrawer::drawerHeight);
+        patternDrawer->setVisible(! fullyClosed);
     }
 }
 
-bool Replicant303AudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+bool Replicant303AudioProcessorEditor::keyPressed(const juce::KeyPress& key)
 {
     if (key == juce::KeyPress::spaceKey)
     {
         auto& sequencer = audioProcessor.getSequencer();
-        if (sequencer.isTransportArmed())
+        if (sequencer.isPlaying())
             sequencer.stop();
         else
             sequencer.start();
 
-        repaint();
+        contentCanvas.repaint();
         return true;
     }
 
     if (key == juce::KeyPress::escapeKey && drawerOpen)
     {
-        setPatternDrawerOpen (false);
+        setPatternDrawerOpen(false);
         return true;
     }
 
@@ -627,12 +817,14 @@ void Replicant303AudioProcessorEditor::drawResistor(juce::Graphics& g, float x1,
 
 void Replicant303AudioProcessorEditor::draw3DCircuitBoard(juce::Graphics& g)
 {
+    const float panelH = (float) Replicant303::Layout::panelHeight;
+
     // 1. Dark Green FR4 PCB Ground Plane Substrate
     juce::ColourGradient pcbGrad(
         theme().pcbDark.brighter(0.12f), 0.0f, 0.0f,
-        theme().pcbDark.darker(0.35f), 0.0f, (float)getHeight(), false);
+        theme().pcbDark.darker(0.35f), 0.0f, panelH, false);
     g.setGradientFill(pcbGrad);
-    g.fillAll();
+    g.fillRect(0.0f, 0.0f, (float) Replicant303::Layout::panelWidth, panelH);
 
     // 2. Copper Routing Traces & Ground Pours
     g.setColour(theme().pcbTrace.withAlpha(0.68f));
@@ -709,12 +901,15 @@ void Replicant303AudioProcessorEditor::draw3DCircuitBoard(juce::Graphics& g)
 
 void Replicant303AudioProcessorEditor::drawTranslucentAcrylicPanel(juce::Graphics& g)
 {
+    const float panelW = (float) Replicant303::Layout::panelWidth;
+    const float panelH = (float) Replicant303::Layout::panelHeight;
+
     // 1. Translucent Acrylic Glaze (colour + translucency come from the active skin)
     juce::ColourGradient acrylicGrad(
         theme().chassisUp.withAlpha(theme().chassisAlphaUp), 0.0f, 0.0f,
-        theme().chassisDown.withAlpha(theme().chassisAlphaDown), 0.0f, (float)getHeight(), false);
+        theme().chassisDown.withAlpha(theme().chassisAlphaDown), 0.0f, panelH, false);
     g.setGradientFill(acrylicGrad);
-    g.fillAll();
+    g.fillRect(0.0f, 0.0f, panelW, panelH);
 
     // 2. Translucent Internal Mold Bosses (Circular Standoff Pillars)
     // Upper row knobs:
@@ -741,7 +936,7 @@ void Replicant303AudioProcessorEditor::drawTranslucentAcrylicPanel(juce::Graphic
     drawMoldBoss(g, 1011.0f, 469.0f, 28.0f); // Write/Next
 
     // 3. 3D Beveled Chassis Edges & Specular Glare
-    auto bounds = getLocalBounds().toFloat();
+    auto bounds = juce::Rectangle<float>(0.0f, 0.0f, panelW, panelH);
 
     // Outer case beveled rim
     g.setColour(juce::Colours::black.withAlpha(0.45f));
@@ -764,18 +959,19 @@ void Replicant303AudioProcessorEditor::drawTranslucentAcrylicPanel(juce::Graphic
 
     // 4. Physical Corner Screws & Structural Mounts
     drawScrew(g, 22.0f, 22.0f);
-    drawScrew(g, (float)getWidth() - 22.0f, 22.0f);
-    drawScrew(g, 22.0f, (float)getHeight() - 22.0f);
-    drawScrew(g, (float)getWidth() - 22.0f, (float)getHeight() - 22.0f);
+    drawScrew(g, panelW - 22.0f, 22.0f);
+    drawScrew(g, 22.0f, panelH - 22.0f);
+    drawScrew(g, panelW - 22.0f, panelH - 22.0f);
 
-    drawScrew(g, 435.0f, 22.0f);
-    drawScrew(g, 700.0f, 22.0f);
+    drawScrew(g, 425.0f, 22.0f);
     drawScrew(g, 435.0f, 568.0f);
     drawScrew(g, 700.0f, 568.0f);
 }
 
 void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
 {
+    const float panelW = (float) Replicant303::Layout::panelWidth;
+
     g.setColour(theme().silkscreen);
 
     // 1. Header Typography
@@ -783,10 +979,10 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
     g.drawText("REPLICANT-303", 38, 12, 230, 28, juce::Justification::centredLeft);
 
     g.setFont(Replicant303::uiFont(11.5f, juce::Font::plain));
-    g.drawText("Computer Controlled", 265, 20, 160, 16, juce::Justification::centredLeft);
+    g.drawText("Computer Controlled", 265, 20, 150, 16, juce::Justification::centredLeft);
 
-    g.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
-    g.drawText("ANALOG BASS LINE", getWidth() - 166, 18, 146, 16, juce::Justification::centredRight);
+    g.setFont(Replicant303::uiFont(9.0f, juce::Font::bold));
+    g.drawText("ANALOG BASS LINE", 924, 18, 122, 16, juce::Justification::centredRight);
 
     // 2. 5 Patch Jacks (Center Top)
     float jackY = 78.0f;
@@ -916,9 +1112,9 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
 
     // 5. Bottom Horizontal Silkscreen Divider Bar
     g.setColour(theme().silkscreen.withAlpha(0.85f));
-    g.drawLine(20.0f, 250.0f, (float)getWidth() - 20.0f, 250.0f, 1.5f);
+    g.drawLine(20.0f, 250.0f, panelW - 20.0f, 250.0f, 1.5f);
     g.setColour(juce::Colours::black.withAlpha(0.35f));
-    g.drawLine(20.0f, 251.5f, (float)getWidth() - 20.0f, 251.5f, 1.0f);
+    g.drawLine(20.0f, 251.5f, panelW - 20.0f, 251.5f, 1.0f);
 
     // 6. Sequencer Silkscreen Framing Boxes
     // Left Box
@@ -991,7 +1187,7 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
 
     // 8. 3D Embossed Transparent Plastic Logo across Bottom Lip
     juce::String embossedText = "R  E  P  L  I  C  A  N  T   -   3  0  3";
-    auto embRect = juce::Rectangle<float>(0.0f, 548.0f, (float)getWidth(), 30.0f);
+    auto embRect = juce::Rectangle<float>(0.0f, 548.0f, panelW, 30.0f);
     g.setFont(Replicant303::uiFont(18.0f, juce::Font::bold));
 
     // Recessed drop shadow
@@ -1281,11 +1477,11 @@ void Replicant303AudioProcessorEditor::draw7SegmentDigit(juce::Graphics& g, floa
 
 void Replicant303AudioProcessorEditor::drawDigitalTempoClock(juce::Graphics& g)
 {
-    // 80s Digital LED Clock Display (Centered in Header: x = 502, y = 11, w = 132, h = 32)
-    const float boxX = 502.0f;
-    const float boxY = 11.0f;
-    const float boxW = 132.0f;
-    const float boxH = 32.0f;
+    // 80s Digital LED Clock Display (Centered in Header)
+    const float boxX = Replicant303::Layout::tempoBoxX;
+    const float boxY = Replicant303::Layout::tempoBoxY;
+    const float boxW = Replicant303::Layout::tempoBoxW;
+    const float boxH = Replicant303::Layout::tempoBoxH;
 
     // 1. Recessed drop shadow in green acrylic chassis
     g.setColour(juce::Colours::black.withAlpha(0.55f));
@@ -1323,13 +1519,22 @@ void Replicant303AudioProcessorEditor::drawDigitalTempoClock(juce::Graphics& g)
     g.setFont(Replicant303::uiFont(8.0f, juce::Font::bold));
     g.drawText("BPM", (int)displayArea.getRight() - 27, (int)displayArea.getBottom() - 12, 24, 10, juce::Justification::centredRight);
 
-    // 7. Render 3 7-Segment Digits
+    // 7. Render 3 7-Segment Digits (shows DAW tempo in Host mode, parameter otherwise)
     float tempoVal = 125.0f;
-    auto* param = audioProcessor.apvts.getRawParameterValue("tempo");
-    if (param != nullptr)
+    const auto& sequencer = audioProcessor.getSequencer();
+    if (sequencer.getSyncMode() == Replicant303::PatternSequencer::SyncMode::Host
+        && sequencer.getHostTempo() > 1.0)
+    {
+        tempoVal = (float) sequencer.getEffectiveTempo();
+    }
+    else if (auto* param = audioProcessor.apvts.getRawParameterValue("tempo"))
+    {
         tempoVal = param->load();
+    }
     else
+    {
         tempoVal = (float)tempoKnob.slider.getValue();
+    }
 
     int bpmInt = juce::jlimit(40, 300, juce::roundToInt(tempoVal));
     juce::String bpmStr = juce::String(bpmInt).paddedLeft(' ', 3);
@@ -1426,6 +1631,11 @@ void Replicant303AudioProcessorEditor::drawSequencerTab(juce::Graphics& g)
 
 void Replicant303AudioProcessorEditor::paint(juce::Graphics& g)
 {
+    g.fillAll(theme().pcbDark.darker(0.65f));
+}
+
+void Replicant303AudioProcessorEditor::paintCanvas(juce::Graphics& g)
+{
     // Layer 1: Procedural 3D PCB Underlay with ICs, Capacitors, Resistors, Copper Traces & Vias
     draw3DCircuitBoard(g);
 
@@ -1445,7 +1655,7 @@ void Replicant303AudioProcessorEditor::paint(juce::Graphics& g)
     drawPianoKeysAndLeds(g);
 }
 
-void Replicant303AudioProcessorEditor::resized()
+void Replicant303AudioProcessorEditor::layoutCanvasChildren()
 {
     // Upper Synth Knobs Row
     const int knobSize = 54;
@@ -1496,8 +1706,16 @@ void Replicant303AudioProcessorEditor::resized()
     // Distortion Model ComboBox
     distModelBox.setBounds(484, 172, 128, 28);
 
-    // Panel skin selector (header, between the tempo display and the strapline)
-    themeBox.setBounds(644, 13, 124, 25);
+    // Panel skin selector & Zoom selector in the header
+    themeBox.setBounds(Replicant303::Layout::themeBoxX,
+                       Replicant303::Layout::themeBoxY,
+                       Replicant303::Layout::themeBoxW,
+                       Replicant303::Layout::themeBoxH);
+
+    zoomBox.setBounds(Replicant303::Layout::zoomBoxX,
+                      Replicant303::Layout::zoomBoxY,
+                      Replicant303::Layout::zoomBoxW,
+                      Replicant303::Layout::zoomBoxH);
 
     // Distortion On/Off Switch (Inside Distortion Box, directly under distortion knobs!)
     distActiveSwitch.setBounds(800, 168, 48, 24);
@@ -1505,6 +1723,35 @@ void Replicant303AudioProcessorEditor::resized()
     // The keyboard layout is static: rebuilding it here used to clear the
     // pressed-key and LED state every time the window was resized.
     if (patternDrawer != nullptr)
-        patternDrawer->setBounds (0, Replicant303::Layout::panelHeight,
-                                  getWidth(), PatternDrawer::drawerHeight);
+        patternDrawer->setBounds(0, Replicant303::Layout::panelHeight,
+                                 Replicant303::Layout::panelWidth, PatternDrawer::drawerHeight);
+}
+
+void Replicant303AudioProcessorEditor::resized()
+{
+    const int baseW = Replicant303::Layout::panelWidth;
+    const int baseH = getUnscaledHeight();
+    contentCanvas.setBounds(0, 0, baseW, baseH);
+    layoutCanvasChildren();
+
+    if (! isApplyingProgrammaticSize && getWidth() > 0 && getHeight() > 0)
+    {
+        const float scaleFromW = (float) getWidth() / (float) baseW;
+        const float clamped = juce::jlimit(Replicant303::Layout::minZoomFactor,
+                                           Replicant303::Layout::maxZoomFactor,
+                                           scaleFromW);
+        if (std::abs(clamped - zoomFactor) > 0.002f)
+        {
+            zoomFactor = clamped;
+            syncZoomBoxText();
+
+            if (! ignoreZoomAttachmentCallback && zoomAttachment != nullptr)
+            {
+                const juce::ScopedValueSetter<bool> guard(ignoreZoomAttachmentCallback, true);
+                zoomAttachment->setValueAsCompleteGesture(zoomFactor * 100.0f);
+            }
+        }
+    }
+
+    updateCanvasTransform();
 }

@@ -98,7 +98,10 @@ void PatternDrawer::refresh()
     const bool running = sequencer.isPlaying();
 
     float tempo = 125.0f;
-    if (auto* p = processor.apvts.getRawParameterValue ("tempo"))
+    if (sequencer.getSyncMode() == Replicant303::PatternSequencer::SyncMode::Host
+        && sequencer.getHostTempo() > 1.0)
+        tempo = (float) sequencer.getEffectiveTempo();
+    else if (auto* p = processor.apvts.getRawParameterValue ("tempo"))
         tempo = p->load();
 
     bool needsRepaint = false;
@@ -251,7 +254,6 @@ void PatternDrawer::drawHandle (juce::Graphics& g)
 void PatternDrawer::drawTransport (juce::Graphics& g)
 {
     const auto& t = theme();
-    const bool armed = sequencer.isTransportArmed();
     const bool playing = sequencer.isPlaying();
 
     g.setColour (t.silkscreen.withAlpha (0.45f));
@@ -263,7 +265,7 @@ void PatternDrawer::drawTransport (juce::Graphics& g)
     g.drawText ("SYNC", 714, 29, 94, 10, juce::Justification::centredLeft);
     g.drawText ("CLOCK", 820, 29, 150, 10, juce::Justification::centredLeft);
 
-    drawTactileButton (g, playButton, armed ? "STOP" : "PLAY", playing);
+    drawTactileButton (g, playButton, playing ? "STOP" : "PLAY", playing);
 
     const int current = sequencer.getCurrentPattern();
     for (int i = 0; i < 8; ++i)
@@ -326,7 +328,9 @@ void PatternDrawer::drawTransport (juce::Graphics& g)
     drawTactileButton (g, syncButton, host ? "HOST" : "INT", host);
 
     float bpm = 125.0f;
-    if (auto* p = processor.apvts.getRawParameterValue ("tempo"))
+    if (host && sequencer.getHostTempo() > 1.0)
+        bpm = (float) sequencer.getEffectiveTempo();
+    else if (auto* p = processor.apvts.getRawParameterValue ("tempo"))
         bpm = p->load();
 
     g.setColour (t.silkscreen.withAlpha (0.75f));
@@ -1021,10 +1025,7 @@ void PatternDrawer::toggleFlag (int step, int flag)
 
 void PatternDrawer::startOrStop()
 {
-    // Toggle on the request, not on the running state: in host sync the
-    // transport is armed while the DAW is stopped, and PLAY must still be
-    // pressable to change your mind.
-    if (sequencer.isTransportArmed())
+    if (sequencer.isPlaying())
         sequencer.stop();
     else
         sequencer.start();

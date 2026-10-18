@@ -71,6 +71,16 @@ namespace Replicant303
         void  setSyncMode (SyncMode mode) noexcept;
         SyncMode getSyncMode() const noexcept { return static_cast<SyncMode> (syncMode.load (std::memory_order_relaxed)); }
 
+        /** Returns the last BPM reported by the DAW playhead (0.0 if none). */
+        double getHostTempo() const noexcept { return hostTempo.load (std::memory_order_relaxed); }
+
+        /** Returns true if the DAW transport is currently rolling. */
+        bool isHostPlaying() const noexcept { return hostPlaying.load (std::memory_order_relaxed); }
+
+        /** Returns the active tempo in BPM (host BPM in Host mode when valid,
+            otherwise the internal tempo parameter). */
+        double getEffectiveTempo() const noexcept;
+
         //==========================================================================
         // Telemetry for the UI
         int getCurrentStep() const noexcept { return currentStep.load (std::memory_order_relaxed); }
@@ -139,6 +149,7 @@ namespace Replicant303
 
         // --- transport ---
         std::atomic<bool> playRequested { false };
+        std::atomic<bool> manualPlayWhileHostStopped { false };
         std::atomic<bool> running { false };
         std::atomic<int>  syncMode { (int) SyncMode::Internal };
         std::atomic<bool> hostPlaying { false };

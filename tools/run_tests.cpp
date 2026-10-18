@@ -785,9 +785,26 @@ namespace
     }
 
     //==========================================================================
+    struct MockPlayHead final : public juce::AudioPlayHead
+    {
+        double bpm = 140.0;
+        bool playing = false;
+        double ppq = 0.0;
+
+        juce::Optional<PositionInfo> getPosition() const override
+        {
+            PositionInfo info;
+            info.setBpm (bpm);
+            info.setIsPlaying (playing);
+            info.setPpqPosition (ppq);
+            return info;
+        }
+    };
+
+    //==========================================================================
     void testEditorDrawer()
     {
-        section ("Editor drawer");
+        section ("Editor drawer & zoom");
 
         Replicant303AudioProcessor processor;
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
@@ -802,7 +819,9 @@ namespace
         if (concrete == nullptr)
             return;
 
-        check (editor->getHeight() == 590, "panel starts collapsed (590 px)");
+        check (editor->isResizable(), "editor window is resizable");
+        check (editor->getWidth() == 1080 && editor->getHeight() == 590,
+               "panel starts collapsed at 100% zoom (1080x590 px)");
 
         concrete->setPatternDrawerOpen (true, false);
         check (editor->getHeight() == 590 + PatternDrawer::drawerHeight,
@@ -821,6 +840,38 @@ namespace
         concrete->setPatternDrawerOpen (false, true);
         juce::MessageManager::getInstance()->runDispatchLoopUntil (600);
         check (editor->getHeight() == 590, "animated drawer closes completely");
+
+        // Zoom between 50% and 300%
+        concrete->setZoomFactor (0.50f);
+        check (std::abs (concrete->getZoomFactor() - 0.50f) < 1.0e-3f,
+               "setZoomFactor(0.50) sets 50% zoom");
+        check (editor->getWidth() == 540 && editor->getHeight() == 295,
+               "50% zoom scales editor to 540x295 px");
+
+        concrete->setZoomFactor (3.00f);
+        check (std::abs (concrete->getZoomFactor() - 3.00f) < 1.0e-3f,
+               "setZoomFactor(3.00) sets 300% zoom");
+        check (editor->getWidth() == 3240 && editor->getHeight() == 1770,
+               "300% zoom scales editor to 3240x1770 px");
+
+        concrete->setZoomFactor (0.10f);
+        check (std::abs (concrete->getZoomFactor() - 0.50f) < 1.0e-3f,
+               "zoom below 50% clamps to 50%");
+
+        concrete->setZoomFactor (5.00f);
+        check (std::abs (concrete->getZoomFactor() - 3.00f) < 1.0e-3f,
+               "zoom above 300% clamps to 300%");
+
+        concrete->setZoomFactor (1.50f);
+        concrete->setPatternDrawerOpen (true, false);
+        check (editor->getWidth() == 1620
+                   && editor->getHeight() == juce::roundToInt ((590 + PatternDrawer::drawerHeight) * 1.50f),
+               "opening drawer at 150% zoom preserves 150% scale");
+
+        concrete->setPatternDrawerOpen (false, false);
+        concrete->setZoomFactor (1.00f);
+        check (editor->getWidth() == 1080 && editor->getHeight() == 590,
+               "returning to 100% zoom restores 1080x590 px");
 
         // Loading the H bank moves the TRACK knob to group 3. The timer used to
         // snap the active pattern back to group*2 (pattern F); it must leave
@@ -842,12 +893,49 @@ namespace
                                            "env_mod", "decay", "accent", "volume",
                                            "tempo", "pattern_group", "dist_active",
                                            "dist_type", "dist_drive", "dist_tone",
-                                           "dist_mix", "ui_theme" };
+                                           "dist_mix", "ui_theme", "ui_zoom" };
 
         bool allPresent = true;
         for (const auto& id : required)
             allPresent = allPresent && processor.apvts.getParameter (id) != nullptr;
         check (allPresent, "all parameters are registered");
+
+        check (processor.getSequencer().getSyncMode()
+                   == Replicant303::PatternSequencer::SyncMode::Host,
+               "processor defaults to Host sync mode so DAW tempo is followed on load");
+
+        // Verify DAW tempo adoption on load, tempo change, and preset load
+        {
+            Replicant303AudioProcessor dawProcessor;
+            MockPlayHead playHead;
+            playHead.bpm = 142.0;
+            playHead.playing = false;
+            dawProcessor.setPlayHead (&playHead);
+            dawProcessor.prepareToPlay (48000.0, 512);
+
+            check (std::abs (dawProcessor.getSequencer().getEffectiveTempo() - 142.0) < 0.1,
+                   "prepareToPlay adopts the DAW tempo on plugin load");
+            check (std::abs (dawProcessor.apvts.getRawParameterValue ("tempo")->load() - 142.0f) < 0.2f,
+                   "tempo parameter matches DAW BPM on plugin load");
+
+            playHead.bpm = 165.0;
+            juce::AudioBuffer<float> block (2, 512);
+            juce::MidiBuffer midi;
+            dawProcessor.processBlock (block, midi);
+
+            check (std::abs (dawProcessor.getSequencer().getEffectiveTempo() - 165.0) < 0.1,
+                   "sequencer follows DAW tempo changes in processBlock");
+            check (std::abs (dawProcessor.apvts.getRawParameterValue ("tempo")->load() - 165.0f) < 0.2f,
+                   "tempo parameter updates when DAW BPM changes");
+
+            dawProcessor.loadPreset (3, 10);
+            check (std::abs (dawProcessor.getSequencer().getEffectiveTempo() - 165.0) < 0.1,
+                   "loading a preset while synced to DAW preserves DAW tempo");
+            check (std::abs (dawProcessor.apvts.getRawParameterValue ("tempo")->load() - 165.0f) < 0.2f,
+                   "tempo parameter stays locked to DAW tempo across preset loads");
+
+            dawProcessor.setPlayHead (nullptr);
+        }
 
         processor.prepareToPlay (96000.0, 512);
         check (std::abs (processor.getSequencer().getSampleRate() - 96000.0) < 1.0e-9,
