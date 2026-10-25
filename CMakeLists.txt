@@ -35,6 +35,8 @@ set(R303_SOURCES
     Source/DSP/Common303.h
     Source/DSP/Oscillator303.h
     Source/DSP/Oscillator303.cpp
+    Source/DSP/WaveformBank.h
+    Source/DSP/WaveformBank.cpp
     Source/DSP/DiodeLadderFilter.h
     Source/DSP/DiodeLadderFilter.cpp
     Source/DSP/Envelope303.h
@@ -60,6 +62,8 @@ set(R303_SOURCES
     Source/GUI/PanelLayout.h
     Source/GUI/PatternDrawer.h
     Source/GUI/PatternDrawer.cpp
+    Source/GUI/WaveformSelector.h
+    Source/GUI/WaveformSelector.cpp
 )
 
 set(R303_INCLUDE_DIRS Source Source/DSP Source/GUI)

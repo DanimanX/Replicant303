@@ -33,7 +33,7 @@
 ---
 
 <p align="center">
-  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 in both skins: TD-3 Translucent Green and Obsidian Red, each with the LED tempo clock, skin selector, PATTERN tab and the preset vault row" width="950">
+  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 in both skins: TD-3 Translucent Green and Obsidian Red, each with the waveform scope, LED tempo clock, skin selector, PATTERN tab and the preset vault row" width="950">
 </p>
 
 <p align="center">
@@ -51,7 +51,7 @@ The panel ships with two selectable skins, chosen from the selector in the heade
 * **TD-3 Green** — inspired by the **Behringer TD-3 Translucent Green** edition.
 * **Obsidian Red** — black acrylic panel with red silkscreen lettering, copper traces and knob pointers.
 
-It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive dual envelopes, capacitor-modeled slide, and squelch accent) with an integrated **5-model distortion unit** led by the legendary **ProCo Rat ("Poco Rat")** pedal, a **slide-down pattern core** with an **8 × 64 preset vault**, and portable **`.midi` presets** that carry the complete patch.
+It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive dual envelopes, capacitor-modeled slide, and squelch accent) with a **60-shape band-limited VCO bank** selected from a scope that drops its menu down over the panel, an integrated **5-model distortion unit** led by the legendary **ProCo Rat ("Poco Rat")** pedal, a **slide-down pattern core** with an **8 × 64 preset vault**, and portable **`.midi` presets** that carry the complete patch.
 
 ---
 
@@ -67,10 +67,49 @@ It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive 
 * **5 Patch Points:** Authentic 1/8" jacks (`FILTER IN`, `SYNC IN`, `CV OUT`, `GATE OUT`, `PHONES`).
 
 ### ⚡ Virtual Analog DSP Engine
-* **VCO:** Band-limited PolyBLEP Sawtooth and RC-filtered hollow Square wave with classic asymmetric droop.
+* **VCO:** 60-shape band-limited wavetable bank — the original 303 saw and RC-drooped square plus pulses, sync, folds, formants and digital shapes. Dropdown scope, mip-mapped against aliasing and RMS-matched across shapes.
 * **VCF:** 4-pole diode ladder with non-linear $\tanh$ saturation, AC high-pass decoupling, and self-oscillation.
 * **Slide:** Continuous 60ms capacitor portamento without envelope re-triggering.
 * **Accent:** Dynamic envelope speedup (~200ms) with +4.5 dB boost and squelch bite on velocities $\ge 100$.
+
+### 🧬 60-Shape VCO Bank with a Scope Selector
+
+The WAVEFORM box is a live LED scope, not a two-way switch. **Click — or
+double-click — the shape** and the bank drops down over the panel: 60 shapes,
+each with its own drawn preview, grouped into seven families.
+
+* **CLASSIC (6):** the 303 saw and square, triangle, sine, soft saw and skewed saw.
+* **PULSE (12):** 5 % to 95 % duty cycles, including the 25 % and 33 % widths that cut through a mix.
+* **SYNC (6):** 2× to 8× hard-sync saws for screaming lead lines.
+* **FOLD (6):** West-coast wavefolders at 2×–5×, folded sine and full-wave rectification.
+* **HARMONIC (10):** odd/even stacks, organ drawbars, octaves, fifths, bell, metallic and three vocal formants (A / E / O).
+* **DIGITAL (10):** 2–5 bit quantisation, step ramps, 4-bit chip triangle, sample & hold and CZ-style phase distortion.
+* **HYBRID (10):** saw/square/triangle/sine blends, asymmetric triangle, super saw, ring mod, exponential and reverse saws, clipped sine.
+
+Everything is anti-aliased with a shared **11-level band-limited wavetable
+mip-map**: the oscillator picks the level whose top harmonic still sits below
+Nyquist for the note, so a 5 kHz saw stays clean. All 60 shapes are normalised
+to the same RMS, so auditioning the bank never jumps the level into the ladder
+filter, and indices `0`/`1` stay Sawtooth/Square so patches saved before the
+bank existed load unchanged. The selection lives in the `waveform` parameter:
+it is saved with the plugin state, captured by presets and exported in `.midi`
+presets.
+
+<p align="center">
+  <img src="assets/replicant303_waveforms.png" alt="Replicant 303 waveform bank: the WAVEFORM scope open, showing the 60-shape dropdown with drawn previews, classic shapes, pulse widths, sync and fold families" width="950">
+</p>
+
+<p align="center">
+  <em>Click or double-click the scope: the 60-shape bank drops down, each entry drawn from the same shape the oscillator plays.</em>
+</p>
+
+<p align="center">
+  <img src="assets/replicant303_waveforms_obsidian_red.png" alt="Obsidian Red skin with the waveform bank open on the classic family" width="760">
+</p>
+
+<p align="center">
+  <em>The same bank in Obsidian Red. Selections are saved with the patch.</em>
+</p>
 
 ### 🥁 Pattern Core — Step Sequencer & MIDI Export
 * **Slide-down drawer:** the panel opens downward (`PATTERN` tab in the header, the hardware `WRITE / NEXT` button, or `Esc` to close) to reveal a smoked-acrylic sequencer that is drawn with the same procedural hardware as the panel.
@@ -181,12 +220,13 @@ ninja -C build
 
 ### Tests
 
-The headless regression suite (142 checks) covers the pattern model, the clock
+The headless regression suite (242 checks) covers the pattern model, the clock
 (tempo, swing, accent, slide, length, host sync, stop/release, mid-bar length
 changes), MIDI export, the 8 × 64 preset vault, `.midi` preset round-trips,
 plain-MIDI import, preset generation, sample-accurate MIDI in the synth engine,
-all five distortion models, the plugin state round-trip and the drawer
-animation:
+all five distortion models, the 60-shape wavetable bank (levels, anti-alias
+mips, harmonic series, pitch tracking, parameter wiring), the plugin state
+round-trip, the waveform dropdown and the drawer animation:
 
 ```bash
 ninja -C build run_tests
@@ -198,14 +238,17 @@ xvfb-run -a ./build/run_tests     # Linux, without a display
 
 `generate_snapshot` renders the editor off-screen to a PNG, so the README previews can be
 regenerated without opening a DAW. It takes an output path, an optional skin index, a
-drawer flag and an optional preset index (`bank × 64 + slot`), and switches the skin live
-through the public `ui_theme` parameter before rendering:
+drawer flag, an optional preset index (`bank × 64 + slot`), an optional waveform-menu flag
+and an optional waveform index, and switches the skin live through the public `ui_theme`
+parameter before rendering:
 
 ```bash
 ninja -C build generate_snapshot
 
-generate_snapshot assets/replicant303_ui.png 0 0                              # TD-3 Green
-generate_snapshot assets/replicant303_ui_obsidian_red.png 1 0                 # Obsidian Red
+generate_snapshot assets/replicant303_ui.png 0 0 0 0 0                        # TD-3 Green
+generate_snapshot assets/replicant303_ui_obsidian_red.png 1 0 0 0 0           # Obsidian Red
+generate_snapshot assets/replicant303_waveforms.png 0 0 0 1 4                 # bank open, Soft Saw
+generate_snapshot assets/replicant303_waveforms_obsidian_red.png 1 0 0 1 2    # bank open, Triangle
 generate_snapshot assets/replicant303_sequencer.png 0 1 200                   # drawer, bank D / preset 09
 generate_snapshot assets/replicant303_sequencer_obsidian_red.png 1 1 400      # drawer, bank G / preset 17
 

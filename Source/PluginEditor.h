@@ -6,6 +6,7 @@
 #include "GUI/Replicant303Theme.h"
 #include "GUI/PanelLayout.h"
 #include "GUI/PatternDrawer.h"
+#include "GUI/WaveformSelector.h"
 
 class Replicant303AudioProcessorEditor : public juce::AudioProcessorEditor,
                                          private juce::Timer,
@@ -29,6 +30,14 @@ public:
     /** Adjusts the UI zoom factor (clamped to 0.50 .. 3.00, i.e. 50% .. 300%). */
     void setZoomFactor(float newZoom);
     float getZoomFactor() const noexcept { return zoomFactor; }
+
+    /** Opens or closes the slide-down waveform bank. Used by the scope and by
+        the offline snapshot tool. */
+    void setWaveformMenuOpen(bool shouldBeOpen);
+    bool isWaveformMenuOpen() const noexcept { return waveformMenuOpen; }
+
+    /** Selects a shape by bank index (clamped) and updates the parameter. */
+    void selectWaveformIndex(int index);
 
 private:
     class PanelCanvas : public juce::Component
@@ -103,7 +112,6 @@ private:
     // -------------------------------------------------------------------------
     // Switches & Selectors
     // -------------------------------------------------------------------------
-    juce::ToggleButton waveformSwitch;  // Saw / Square slide switch
     juce::ToggleButton distActiveSwitch; // Distortion Off / On slide switch
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> distActiveAttachment;
 
@@ -112,6 +120,26 @@ private:
 
     juce::ComboBox themeBox;     // Panel skin selector (Green / Black-Red / ...)
     std::unique_ptr<juce::ParameterAttachment> themeAttachment;
+
+    // -------------------------------------------------------------------------
+    // Waveform bank: scope + slide-down menu
+    // -------------------------------------------------------------------------
+    Replicant303::WaveformSelector waveformSelector;
+    std::unique_ptr<Replicant303::WaveformMenu> waveformMenu;
+    std::unique_ptr<juce::ParameterAttachment> waveformAttachment;
+    bool waveformMenuOpen = false;
+
+    struct ClickWatcher : public juce::MouseListener
+    {
+        explicit ClickWatcher(Replicant303AudioProcessorEditor& o) : owner(o) {}
+        void mouseDown(const juce::MouseEvent& e) override { owner.globalMouseDown(e); }
+
+        Replicant303AudioProcessorEditor& owner;
+    };
+    ClickWatcher clickWatcher { *this };
+
+    void toggleWaveformMenu();
+    void globalMouseDown(const juce::MouseEvent& e);
 
     juce::ComboBox zoomBox;      // UI Zoom selector (50% - 300%)
     std::unique_ptr<juce::ParameterAttachment> zoomAttachment;
