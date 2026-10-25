@@ -17,8 +17,6 @@ namespace Replicant303
         env.prepare(sampleRate);
         distortion.prepare(sampleRate);
 
-        scopeTap.setSampleRate(sampleRate);
-
         updateSlideCoefficient();
         reset();
     }
@@ -37,9 +35,6 @@ namespace Replicant303
 
         slideLedActive = false;
         accentLedActive = false;
-
-        scopeTap.reset();
-        scopeTap.setNoteState(static_cast<int>(osc.getWaveform()), 110.0f, 0.0f);
     }
 
     void SynthEngine::updateSlideCoefficient() noexcept
@@ -179,18 +174,11 @@ namespace Replicant303
             osc.setFrequency(currentPitchHz);
             float rawOsc = osc.process();
 
-            // Feed the 3D wavetable scope with the raw VCO, before the filter:
-            // the display shows the oscillator the 303 actually plays.
-            scopeTap.push(rawOsc);
-
             // 3. Compute envelopes (VCF, VCA, Accent)
             float vcfEnv = 0.0f;
             float vcaEnv = 0.0f;
             float accentEnv = 0.0f;
             env.process(vcfEnv, vcaEnv, accentEnv);
-
-            scopeTap.setNoteState(static_cast<int>(osc.getWaveform()),
-                                  currentPitchHz * bendFactor, vcaEnv);
 
             // 4. Diode Ladder Filter processing
             float filtered = filter.process(rawOsc, envMod, vcfEnv, accentEnv * accentAmount);

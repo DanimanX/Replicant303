@@ -6,7 +6,7 @@
 #include "GUI/Replicant303Theme.h"
 #include "GUI/PanelLayout.h"
 #include "GUI/PatternDrawer.h"
-#include "GUI/CyberWavetable3D.h"
+#include "GUI/WaveformSelector.h"
 
 class Replicant303AudioProcessorEditor : public juce::AudioProcessorEditor,
                                          private juce::Timer,
@@ -31,14 +31,13 @@ public:
     void setZoomFactor(float newZoom);
     float getZoomFactor() const noexcept { return zoomFactor; }
 
-    /** Opens or closes the 3D wavetable hologram. The collapsed scope lives in
-        the WAVEFORM box; opening it grows over the panel. `animate = false` is
-        used by the offline snapshot tool and the tests. */
-    void setWavetableHoloOpen(bool shouldBeOpen, bool animate = true);
-    bool isWavetableHoloOpen() const noexcept { return holoOpen; }
+    /** Opens or closes the slide-down waveform bank. Used by the scope and by
+        the offline snapshot tool. */
+    void setWaveformMenuOpen(bool shouldBeOpen);
+    bool isWaveformMenuOpen() const noexcept { return waveformMenuOpen; }
 
-    /** The GPU/software wavetable scope (exposed for diagnostics and tests). */
-    Replicant303::CyberWavetable3D& getWavetableScope() noexcept { return wavetable3D; }
+    /** Selects a shape by bank index (clamped) and updates the parameter. */
+    void selectWaveformIndex(int index);
 
 private:
     class PanelCanvas : public juce::Component
@@ -113,7 +112,6 @@ private:
     // -------------------------------------------------------------------------
     // Switches & Selectors
     // -------------------------------------------------------------------------
-    juce::ToggleButton waveformSwitch;  // Saw / Square slide switch
     juce::ToggleButton distActiveSwitch; // Distortion Off / On slide switch
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> distActiveAttachment;
 
@@ -124,17 +122,12 @@ private:
     std::unique_ptr<juce::ParameterAttachment> themeAttachment;
 
     // -------------------------------------------------------------------------
-    // Cyberpunk 3D wavetable scope (GPU-rendered, visualiser only)
+    // Waveform bank: scope + slide-down menu
     // -------------------------------------------------------------------------
-    Replicant303::CyberWavetable3D wavetable3D;
-    bool holoOpen = false;
-    bool holoAnimating = false;
-    float holoProgress = 0.0f;
-    float holoAnimFrom = 0.0f;
-    double holoAnimStartMs = 0.0;
-
-    juce::Rectangle<float> holoBoundsFor(float progress) const;
-    void applyHoloProgress();
+    Replicant303::WaveformSelector waveformSelector;
+    std::unique_ptr<Replicant303::WaveformMenu> waveformMenu;
+    std::unique_ptr<juce::ParameterAttachment> waveformAttachment;
+    bool waveformMenuOpen = false;
 
     struct ClickWatcher : public juce::MouseListener
     {
@@ -144,6 +137,8 @@ private:
         Replicant303AudioProcessorEditor& owner;
     };
     ClickWatcher clickWatcher { *this };
+
+    void toggleWaveformMenu();
     void globalMouseDown(const juce::MouseEvent& e);
 
     juce::ComboBox zoomBox;      // UI Zoom selector (50% - 300%)

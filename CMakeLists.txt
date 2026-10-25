@@ -35,7 +35,8 @@ set(R303_SOURCES
     Source/DSP/Common303.h
     Source/DSP/Oscillator303.h
     Source/DSP/Oscillator303.cpp
-    Source/DSP/ScopeTap.h
+    Source/DSP/WaveformBank.h
+    Source/DSP/WaveformBank.cpp
     Source/DSP/DiodeLadderFilter.h
     Source/DSP/DiodeLadderFilter.cpp
     Source/DSP/Envelope303.h
@@ -61,8 +62,8 @@ set(R303_SOURCES
     Source/GUI/PanelLayout.h
     Source/GUI/PatternDrawer.h
     Source/GUI/PatternDrawer.cpp
-    Source/GUI/CyberWavetable3D.h
-    Source/GUI/CyberWavetable3D.cpp
+    Source/GUI/WaveformSelector.h
+    Source/GUI/WaveformSelector.cpp
 )
 
 set(R303_INCLUDE_DIRS Source Source/DSP Source/GUI)
@@ -72,7 +73,6 @@ set(R303_JUCE_LIBS
     juce::juce_dsp
     juce::juce_gui_basics
     juce::juce_gui_extra
-    juce::juce_opengl
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )

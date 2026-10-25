@@ -23,7 +23,7 @@ namespace Replicant303
         Pattern pattern;
 
         // Synth voice
-        int   waveform  = 0;        // 0 Saw, 1 Square
+        int   waveform  = 0;        // index into the 60-shape VCO bank
         float tuning    = 0.0f;     // semitones
         float cutoff    = 350.0f;   // Hz
         float resonance = 0.65f;

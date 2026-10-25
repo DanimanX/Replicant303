@@ -245,7 +245,6 @@ jobs:
 
             ### 🎨 Interface
             * Fully procedural 3D front panel: PCB underlay, translucent acrylic chassis, metal knobs, 13-key tactile keyboard and an 80s 7-segment LED tempo clock.
-            * **Cyberpunk 3D wavetable hologram:** an OpenGL-rendered perspective waterfall of the live VCO, with a software fallback, neon glow and six idle wave signatures.
             * **Selectable skins:** Translucent Green (Behringer TD-3) and Obsidian Red (black acrylic, red silkscreen). Choose one from the header selector; the choice is saved with the plugin state.
 
             ### 🗄️ Preset Vault

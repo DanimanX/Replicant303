@@ -873,6 +873,20 @@ namespace
         check (editor->getWidth() == 1080 && editor->getHeight() == 590,
                "returning to 100% zoom restores 1080x590 px");
 
+        // Waveform bank dropdown: opening it must not move the window, and a
+        // selection must reach the parameter the audio thread reads.
+        concrete->setWaveformMenuOpen (true);
+        check (concrete->isWaveformMenuOpen(), "the waveform bank drops down");
+        check (editor->getHeight() == 590,
+               "the waveform bank overlays the panel instead of resizing it");
+
+        concrete->selectWaveformIndex (26);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (80);
+
+        check (! concrete->isWaveformMenuOpen(), "picking a shape closes the bank");
+        check (juce::roundToInt (processor.apvts.getRawParameterValue ("waveform")->load()) == 26,
+               "picking a shape writes the waveform parameter");
+
         // Loading the H bank moves the TRACK knob to group 3. The timer used to
         // snap the active pattern back to group*2 (pattern F); it must leave
         // the explicitly loaded letter H alone.
@@ -1123,157 +1137,197 @@ namespace
 
 
 //==============================================================================
-// 3D wavetable scope (tap + hologram)
+// 60-shape VCO bank
 //==============================================================================
 namespace
 {
-    void testWavetableScope()
+    void testWaveformBank()
     {
-        section ("Scope tap");
+        section ("Waveform bank");
 
         using namespace Replicant303;
 
+        check (numWaveforms == 60, "the VCO bank exposes 60 shapes");
+        check (juce::String (getWaveformName (0)) == "Sawtooth"
+                   && juce::String (getWaveformName (1)) == "Square",
+               "saw and square keep their original preset indices");
+
+        juce::StringArray names;
+        for (int i = 0; i < numWaveforms; ++i)
         {
-            ScopeTap tap;
-
-            float out[16] = {};
-            check (! tap.copyLatest (out, 8), "an empty tap reports missing history");
-            check (out[0] == 0.0f && out[7] == 0.0f, "an empty tap reads as silence");
-
-            for (int i = 0; i < 100; ++i)
-                tap.push ((float) i);
-
-            check (tap.copyLatest (out, 4), "the tap serves a full window once filled");
-            check (out[0] == 96.0f && out[1] == 97.0f && out[2] == 98.0f && out[3] == 99.0f,
-                   "the tap returns the newest samples, oldest first");
-
-            // Overrun the ring: it must keep the newest window and not wrap.
-            for (int i = 100; i < ScopeTap::capacity + 500; ++i)
-                tap.push ((float) i);
-
-            const int last = ScopeTap::capacity + 499;
-            check (tap.copyLatest (out, 4), "the tap still serves after wrapping");
-            check (out[3] == (float) last && out[0] == (float) (last - 3),
-                   "wrapping the ring keeps the newest samples in order");
-
-            tap.setNoteState (1, 220.0f, 0.4f);
-            check (tap.getWaveformIndex() == 1 && std::abs (tap.getFrequencyHz() - 220.0f) < 0.01f,
-                   "the tap publishes the voice state");
-            check (tap.isLive(), "an open envelope marks the voice as live");
-
-            tap.setNoteState (0, 110.0f, 0.0f);
-            check (! tap.isLive(), "a closed envelope idles the scope");
+            names.add (getWaveformName (i));
+            check (std::isfinite (evaluateWaveformShape (i, 0.37)),
+                   juce::String ("shape ") + juce::String (i) + " evaluates");
         }
 
-        section ("Scope audio feed");
+        auto unique = names;
+        unique.removeDuplicates (false);
+        check (unique.size() == names.size(), "every shape has a unique name");
 
+        // Render one second of every shape at 220 Hz / 48 kHz.
+        Oscillator303 osc;
+        osc.prepare (48000.0);
+
+        bool finite = true;
+        bool bounded = true;
+        bool audible = true;
+        float sawPeak = 0.0f;
+        std::vector<float> sawSamples, sineSamples;
+
+        for (int i = 0; i < numWaveforms; ++i)
         {
-            // The scope must observe the real pre-filter VCO, and the VCO must
-            // still be the original 303 saw/square pair after the revert.
-            SynthEngine engine;
-            engine.prepare (48000.0);
-            engine.setWaveform (Waveform::Sawtooth);
-            engine.setDecay (2.5f);
+            osc.setWaveform (static_cast<Waveform> (i));
+            osc.setFrequency (220.0f);
+            osc.reset();
 
-            juce::AudioBuffer<float> buffer (2, 512);
-            juce::MidiBuffer midi;
-            midi.addEvent (juce::MidiMessage::noteOn (1, 45, 1.0f), 0);   // A2 = 110 Hz
-            engine.processBlock (buffer, midi);
-
-            float scope[1024] = {};
-            engine.getScopeTap().copyLatest (scope, 1024);
-
+            double sumSquares = 0.0;
             float peak = 0.0f;
-            double sum = 0.0;
-            for (auto v : scope)
+
+            for (int sample = 0; sample < 24000; ++sample)
             {
+                const float v = osc.process();
+                finite = finite && std::isfinite (v);
                 peak = juce::jmax (peak, std::abs (v));
-                sum += (double) v * v;
+                sumSquares += (double) v * v;
+
+                if (i == 0 && sample < 4096) sawSamples.push_back (v);
+                if (i == 3 && sample < 4096) sineSamples.push_back (v);
             }
 
-            check (peak > 0.4f && peak <= 1.0f, "the tap receives the raw VCO at full level");
-            check (std::sqrt (sum / 1024.0) > 0.1, "the tap window carries real energy");
-            check (engine.getScopeTap().isLive(), "playing a note drives the scope live");
-            check (std::abs (engine.getScopeTap().getFrequencyHz() - 110.0f) < 1.5f,
-                   "the scope reports the played frequency");
-            check (engine.getScopeTap().getWaveformIndex() == (int) Waveform::Sawtooth,
-                   "the scope reports the selected waveform");
+            bounded = bounded && peak <= 1.0001f;
+            audible = audible && std::sqrt (sumSquares / 24000.0) > 0.10;
+
+            if (i == 0)
+                sawPeak = peak;
         }
 
-        section ("3D wavetable hologram");
+        check (finite, "all 60 shapes render finite samples");
+        check (bounded, "all 60 shapes stay inside [-1, 1]");
+        check (audible, "all 60 shapes produce audible energy");
+        check (sawPeak > 0.5f, "the saw retains its original level");
 
-        CyberWavetable3D::setSoftwareRenderingForced (true);
+        bool shapesDiffer = false;
+        for (size_t i = 0; i < sawSamples.size(); ++i)
+            shapesDiffer = shapesDiffer || std::abs (sawSamples[i] - sineSamples[i]) > 0.05f;
+        check (shapesDiffer, "selecting another shape changes the rendered signal");
 
+        // Anti-aliasing: low notes use the full-band table, high notes fall
+        // back to a heavily band-limited mip.
+        osc.setWaveform (Waveform::Sawtooth);
+        osc.setFrequency (20.0f);
+        check (osc.getMipLevel() == 0, "a 20 Hz note plays the full-band table");
+        osc.setFrequency (5000.0f);
+        check (osc.getMipLevel() > 3, "a 5 kHz note drops to a band-limited mip");
+
+        // Fundamental frequency stays put through the wavetable engine.
+        osc.setFrequency (220.0f);
+        osc.reset();
+
+        int positiveCrossings = 0;
+        float previous = 0.0f;
+
+        for (int sample = 0; sample < 48000; ++sample)
         {
-            Replicant303AudioProcessor processor;
-            std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
-            auto* concrete = dynamic_cast<Replicant303AudioProcessorEditor*> (editor.get());
+            const float v = osc.process();
 
-            check (concrete != nullptr, "editor hosts the 3D wavetable scope");
+            if (sample > 0 && previous < 0.0f && v >= 0.0f)
+                ++positiveCrossings;
 
-            if (concrete == nullptr)
-                return;
-
-            editor->setSize (1080, 590);
-
-            auto& scope = concrete->getWavetableScope();
-            check (! scope.isUsingGPU(), "forcing software rendering keeps the scope off the GPU (headless)");
-            check (scope.getWidth() < 200, "the collapsed scope lives inside the WAVEFORM box");
-
-            concrete->setWavetableHoloOpen (true, false);
-            check (concrete->isWavetableHoloOpen(), "the hologram opens");
-            check (editor->getWidth() == 1080 && editor->getHeight() == 590,
-                   "the hologram overlays the panel without resizing the window");
-            check (scope.getWidth() > 400 && scope.getHeight() > 250,
-                   "the open hologram grows over the panel");
-            check (scope.isExpanded(), "the scope switches to its expanded HUD");
-
-            // Draw it: the scene must produce neon traces, not an empty panel.
-            juce::Image frame (juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
-            {
-                juce::Graphics g (frame);
-                editor->paintEntireComponent (g, true);
-            }
-
-            int cyanPixels = 0;
-            int magentaPixels = 0;
-
-            for (int y = scope.getY() + 20; y < scope.getBottom() - 20; y += 2)
-            {
-                for (int x = scope.getX() + 20; x < scope.getRight() - 20; x += 2)
-                {
-                    const auto c = frame.getPixelAt (x, y);
-
-                    if (c.getBlue() > 150 && c.getGreen() > 120 && c.getRed() < 120)
-                        ++cyanPixels;
-
-                    if (c.getRed() > 45 && c.getBlue() > 60 && c.getGreen() < 90
-                        && c.getBlue() > c.getGreen())
-                        ++magentaPixels;
-                }
-            }
-
-            check (cyanPixels > 40, "the hologram renders the cyan near field");
-            check (magentaPixels > 10, "the hologram renders the magenta far field");
-
-            check (concrete->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)),
-                   "Escape is handled while the hologram is open");
-            check (! concrete->isWavetableHoloOpen(), "Escape closes the hologram");
-
-            // Closing is animated on the editor timer; let it finish.
-            juce::MessageManager::getInstance()->runDispatchLoopUntil (500);
-            check (scope.getWidth() < 200, "the animation restores the inline scope");
-            check (editor->getWidth() == 1080 && editor->getHeight() == 590,
-                   "closing the hologram leaves the window size alone");
-
-            concrete->setWavetableHoloOpen (true, false);
-            concrete->setPatternDrawerOpen (true, false);
-            check (! concrete->isWavetableHoloOpen(),
-                   "opening the sequencer drawer closes the hologram");
-            concrete->setPatternDrawerOpen (false, false);
+            previous = v;
         }
 
-        CyberWavetable3D::setSoftwareRenderingForced (false);
+        check (std::abs (positiveCrossings - 220) <= 3,
+               "the wavetable oscillator tracks the note (220 Hz)");
+
+        // The tables themselves must be band-limited: the full-band saw has
+        // 1/n harmonics, while the highest mip keeps a single harmonic.
+        {
+            const auto& tables = WavetableBank::getInstance();
+
+            auto harmonicAmplitude = [] (const float* table, int harmonic)
+            {
+                const int N = WavetableBank::tableSize;
+                double re = 0.0, im = 0.0;
+
+                for (int n = 0; n < N; ++n)
+                {
+                    const double angle = 6.283185307179586
+                                       * (double) harmonic * (double) n / (double) N;
+                    re += (double) table[n] * std::cos (angle);
+                    im += (double) table[n] * std::sin (angle);
+                }
+
+                return std::sqrt (re * re + im * im) * 2.0 / (double) N;
+            };
+
+            const float* sawTable = tables.table ((int) Waveform::Sawtooth, 0);
+            const float* lastMip = tables.table ((int) Waveform::Sawtooth,
+                                                 WavetableBank::numMips - 1);
+
+            const double h1 = harmonicAmplitude (sawTable, 1);
+            const double h2 = harmonicAmplitude (sawTable, 2);
+            check (std::abs (h2 / h1 - 0.5) < 0.05,
+                   "the saw table carries a 1/n harmonic series");
+            check (harmonicAmplitude (lastMip, 2) < 0.02 * harmonicAmplitude (lastMip, 1),
+                   "the highest mip keeps a single harmonic (no aliasing)");
+        }
+
+        // The parameter exposing the bank must list every shape.
+        Replicant303AudioProcessor processor;
+        auto* choice = dynamic_cast<juce::AudioParameterChoice*> (
+            processor.apvts.getParameter ("waveform"));
+
+        check (choice != nullptr, "waveform is a choice parameter");
+        check (choice != nullptr && choice->choices.size() == numWaveforms,
+               "the waveform parameter exposes all 60 shapes");
+        check (choice != nullptr && choice->choices[0] == "Sawtooth"
+                   && choice->choices[1] == "Square",
+               "the waveform parameter keeps the preset-compatible order");
+
+        if (choice != nullptr)
+        {
+            choice->setValueNotifyingHost (choice->convertTo0to1 (27.0f));
+            check (processor.captureCurrentPreset ("Scope").waveform == 27,
+                   "a selected shape is captured by the preset system");
+        }
+
+        Preset wild;
+        wild.waveform = 999;
+        wild.sanitise();
+        check (wild.waveform == numWaveforms - 1,
+               "out-of-range preset shapes clamp to the bank size");
+
+        // The scope's gesture wiring: a click toggles, a double-click opens.
+        {
+            WaveformSelector selector;
+            bool singleClicked = false;
+            bool doubleClicked = false;
+
+            selector.onClicked = [&singleClicked] { singleClicked = true; };
+            selector.onMenuRequested = [&doubleClicked] { doubleClicked = true; };
+
+            auto makeEvent = [&selector] (int clicks)
+            {
+                return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(),
+                                         juce::Point<float> (10.0f, 10.0f),
+                                         juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                         &selector, &selector,
+                                         juce::Time::getCurrentTime(),
+                                         juce::Point<float> (10.0f, 10.0f),
+                                         juce::Time::getCurrentTime(),
+                                         clicks, false);
+            };
+
+            const auto single = makeEvent (1);
+            selector.mouseDown (single);
+
+            const auto doubleClick = makeEvent (2);
+            selector.mouseDoubleClick (doubleClick);
+
+            check (singleClicked, "a click on the scope requests the waveform menu");
+            check (doubleClicked, "a double-click on the scope opens the waveform bank");
+        }
     }
 }
 
@@ -1293,7 +1347,7 @@ int main()
     testSynthEngine();
     testEngineEdges();
     testProcessor();
-    testWavetableScope();
+    testWaveformBank();
     testEditorDrawer();
 
     std::cout << "\n----------------------------------------" << std::endl;

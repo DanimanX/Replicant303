@@ -33,7 +33,7 @@
 ---
 
 <p align="center">
-  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 in both skins: TD-3 Translucent Green and Obsidian Red, each with the 3D wavetable scope, LED tempo clock, skin selector, PATTERN tab and the preset vault row" width="950">
+  <img src="assets/replicant303_ui_preview.png" alt="Replicant 303 in both skins: TD-3 Translucent Green and Obsidian Red, each with the waveform scope, LED tempo clock, skin selector, PATTERN tab and the preset vault row" width="950">
 </p>
 
 <p align="center">
@@ -51,7 +51,7 @@ The panel ships with two selectable skins, chosen from the selector in the heade
 * **TD-3 Green** — inspired by the **Behringer TD-3 Translucent Green** edition.
 * **Obsidian Red** — black acrylic panel with red silkscreen lettering, copper traces and knob pointers.
 
-It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive dual envelopes, capacitor-modeled slide, and squelch accent) with an integrated **5-model distortion unit** led by the legendary **ProCo Rat ("Poco Rat")** pedal, a **slide-down pattern core** with an **8 × 64 preset vault**, and portable **`.midi` presets** that carry the complete patch.
+It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive dual envelopes, capacitor-modeled slide, and squelch accent) with a **60-shape band-limited VCO bank** selected from a scope that drops its menu down over the panel, an integrated **5-model distortion unit** led by the legendary **ProCo Rat ("Poco Rat")** pedal, a **slide-down pattern core** with an **8 × 64 preset vault**, and portable **`.midi` presets** that carry the complete patch.
 
 ---
 
@@ -62,57 +62,53 @@ It combines circuit-accurate synthesis (4-pole diode ladder filter, interactive 
 * **Procedural 3D PCB Underlay:** Visible circuit board with BA662 VCA, LM308N Op-Amp, AN6562 filter buffer, D8048C CPU, electrolytic capacitors, resistors, and copper traces.
 * **Translucent Acrylic:** Mold standoff bosses under every knob and jack, beveled 3D borders, and embossed `REPLICANT - 303` bottom lip.
 * **80s Digital LED Tempo Display:** Vintage red 7-segment clock display on deep black recessed acrylic, updating BPM in real time.
-* **Cyberpunk 3D wavetable scope:** an OpenGL-rendered hologram in the WAVEFORM box. Click it and it grows over the panel into a neon 3D waterfall of the oscillator; the audio path is untouched, so the voice stays the original 303.
 * **11 Spun-Aluminum Knobs:** Conical brushed metallic caps, fluted dark skirts, and radial tick markings.
 * **13-Key Tactile Keyboard:** Playable via mouse or MIDI, with 13 individual real-time red LEDs.
 * **5 Patch Points:** Authentic 1/8" jacks (`FILTER IN`, `SYNC IN`, `CV OUT`, `GATE OUT`, `PHONES`).
 
 ### ⚡ Virtual Analog DSP Engine
-* **VCO:** Band-limited PolyBLEP Sawtooth and RC-filtered hollow Square wave with classic asymmetric droop.
+* **VCO:** 60-shape band-limited wavetable bank — the original 303 saw and RC-drooped square plus pulses, sync, folds, formants and digital shapes. Dropdown scope, mip-mapped against aliasing and RMS-matched across shapes.
 * **VCF:** 4-pole diode ladder with non-linear $\tanh$ saturation, AC high-pass decoupling, and self-oscillation.
 * **Slide:** Continuous 60ms capacitor portamento without envelope re-triggering.
 * **Accent:** Dynamic envelope speedup (~200ms) with +4.5 dB boost and squelch bite on velocities $\ge 100$.
 
-### 🌆 Cyberpunk 3D Wavetable Hologram
+### 🧬 60-Shape VCO Bank with a Scope Selector
 
-The WAVEFORM box holds a live 3D wavetable scope. **Click it** and the scope
-grows over the panel into a neon hologram: every slice is one cycle of the
-oscillator, older cycles recede towards a magenta horizon and the nearest one
-burns cyan. Click it again, press `Esc`, or click anywhere else to fold it back.
+The WAVEFORM box is a live LED scope, not a two-way switch. **Click — or
+double-click — the shape** and the bank drops down over the panel: 60 shapes,
+each with its own drawn preview, grouped into seven families.
 
-* **Real geometry, real audio:** the slices come from the raw VCO through a
-  lock-free tap, so the surface is the wave the 303 is playing — the saw's reset
-  edge shears across the stack like a blade. The scope never touches the audio
-  path: the voice is still the authentic PolyBLEP saw and RC-drooped square.
-* **Rendered on the GPU:** an OpenGL context rasterises the perspective surface,
-  the additive glow passes, the chromatic ghosts and the CRT scanlines. The
-  waveform, the HUD and the skin frame come from the panel's own paint pass, so
-  the hologram follows the active skin.
-* **Software fallback:** when no GL context is available (headless CI, remote
-  desktops, a core-profile-only driver) the same scene is drawn by an equivalent
-  software renderer, so the scope is never a black rectangle.
-* **Cyberpunk wave signatures:** while no note is sounding the hologram switches
-  to its idle bank — `DATA BLADE`, `NEON PULSE`, `CHROME SINE`,
-  `GLITCH RUNNER`, `LASER RAMP` and `VOLT SPIKE` — six procedural neon shapes
-  that morph every seven seconds. They are display art only and never reach the
-  synth.
-* **HUD badges:** `GPU` / `SW` shows which renderer is live, and `LIVE` / `IDLE`
-  shows whether the scope is watching a note or running its attract mode.
+* **CLASSIC (6):** the 303 saw and square, triangle, sine, soft saw and skewed saw.
+* **PULSE (12):** 5 % to 95 % duty cycles, including the 25 % and 33 % widths that cut through a mix.
+* **SYNC (6):** 2× to 8× hard-sync saws for screaming lead lines.
+* **FOLD (6):** West-coast wavefolders at 2×–5×, folded sine and full-wave rectification.
+* **HARMONIC (10):** odd/even stacks, organ drawbars, octaves, fifths, bell, metallic and three vocal formants (A / E / O).
+* **DIGITAL (10):** 2–5 bit quantisation, step ramps, 4-bit chip triangle, sample & hold and CZ-style phase distortion.
+* **HYBRID (10):** saw/square/triangle/sine blends, asymmetric triangle, super saw, ring mod, exponential and reverse saws, clipped sine.
+
+Everything is anti-aliased with a shared **11-level band-limited wavetable
+mip-map**: the oscillator picks the level whose top harmonic still sits below
+Nyquist for the note, so a 5 kHz saw stays clean. All 60 shapes are normalised
+to the same RMS, so auditioning the bank never jumps the level into the ladder
+filter, and indices `0`/`1` stay Sawtooth/Square so patches saved before the
+bank existed load unchanged. The selection lives in the `waveform` parameter:
+it is saved with the plugin state, captured by presets and exported in `.midi`
+presets.
 
 <p align="center">
-  <img src="assets/replicant303_wavetable3d.png" alt="Replicant 303 3D wavetable hologram open over the panel: a perspective waterfall of 303 sawtooth cycles running from cyan in the foreground to magenta at the neon horizon" width="950">
+  <img src="assets/replicant303_waveforms.png" alt="Replicant 303 waveform bank: the WAVEFORM scope open, showing the 60-shape dropdown with drawn previews, classic shapes, pulse widths, sync and fold families" width="950">
 </p>
 
 <p align="center">
-  <em>The hologram open on TD-3 Green: one cycle per slice, GPU-rendered, with the live VCO frequency in the HUD.</em>
+  <em>Click or double-click the scope: the 60-shape bank drops down, each entry drawn from the same shape the oscillator plays.</em>
 </p>
 
 <p align="center">
-  <img src="assets/replicant303_wavetable3d_obsidian_red.png" alt="Obsidian Red skin with the 3D wavetable hologram open" width="760">
+  <img src="assets/replicant303_waveforms_obsidian_red.png" alt="Obsidian Red skin with the waveform bank open on the classic family" width="760">
 </p>
 
 <p align="center">
-  <em>Obsidian Red. The hologram is themed by the active skin and saved nowhere — it is a view, not a parameter.</em>
+  <em>The same bank in Obsidian Red. Selections are saved with the patch.</em>
 </p>
 
 ### 🥁 Pattern Core — Step Sequencer & MIDI Export
@@ -224,13 +220,13 @@ ninja -C build
 
 ### Tests
 
-The headless regression suite (186 checks) covers the pattern model, the clock
+The headless regression suite (242 checks) covers the pattern model, the clock
 (tempo, swing, accent, slide, length, host sync, stop/release, mid-bar length
 changes), MIDI export, the 8 × 64 preset vault, `.midi` preset round-trips,
 plain-MIDI import, preset generation, sample-accurate MIDI in the synth engine,
-all five distortion models, the scope tap (ring-buffer order, voice state, raw
-VCO feed), the 3D wavetable hologram (open/close, overlay without resizing,
-rendered neon traces), the plugin state round-trip and the drawer animation:
+all five distortion models, the 60-shape wavetable bank (levels, anti-alias
+mips, harmonic series, pitch tracking, parameter wiring), the plugin state
+round-trip, the waveform dropdown and the drawer animation:
 
 ```bash
 ninja -C build run_tests
@@ -242,18 +238,17 @@ xvfb-run -a ./build/run_tests     # Linux, without a display
 
 `generate_snapshot` renders the editor off-screen to a PNG, so the README previews can be
 regenerated without opening a DAW. It takes an output path, an optional skin index, a
-drawer flag, an optional preset index (`bank × 64 + slot`) and an optional hologram flag,
-and switches the skin live through the public `ui_theme` parameter before rendering.
-Offscreen snapshots always use the scope's software renderer, so the stills are identical
-on every machine:
+drawer flag, an optional preset index (`bank × 64 + slot`), an optional waveform-menu flag
+and an optional waveform index, and switches the skin live through the public `ui_theme`
+parameter before rendering:
 
 ```bash
 ninja -C build generate_snapshot
 
-generate_snapshot assets/replicant303_ui.png 0 0 0 0                          # TD-3 Green
-generate_snapshot assets/replicant303_ui_obsidian_red.png 1 0 0 0             # Obsidian Red
-generate_snapshot assets/replicant303_wavetable3d.png 0 0 0 1                 # hologram open
-generate_snapshot assets/replicant303_wavetable3d_obsidian_red.png 1 0 0 1    # hologram, red skin
+generate_snapshot assets/replicant303_ui.png 0 0 0 0 0                        # TD-3 Green
+generate_snapshot assets/replicant303_ui_obsidian_red.png 1 0 0 0 0           # Obsidian Red
+generate_snapshot assets/replicant303_waveforms.png 0 0 0 1 4                 # bank open, Soft Saw
+generate_snapshot assets/replicant303_waveforms_obsidian_red.png 1 0 0 1 2    # bank open, Triangle
 generate_snapshot assets/replicant303_sequencer.png 0 1 200                   # drawer, bank D / preset 09
 generate_snapshot assets/replicant303_sequencer_obsidian_red.png 1 1 400      # drawer, bank G / preset 17
 
