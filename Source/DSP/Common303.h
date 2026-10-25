@@ -4,10 +4,13 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "WaveformBank.h"
-
 namespace Replicant303
 {
+    enum class Waveform : int
+    {
+        Sawtooth = 0,
+        Square   = 1
+    };
 
     enum class DistortionType : int
     {

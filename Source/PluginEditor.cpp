@@ -105,38 +105,18 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
                               (int) Replicant303::Layout::tempoBoxW + 12, 40);
     };
 
-    // 4. Waveform Bank: LED scope + slide-down selector.
-    //    Click or double-click the scope to drop the 60-shape list down over
-    //    the panel; picking an entry writes the "waveform" choice parameter.
-    contentCanvas.addAndMakeVisible(waveformSelector);
-    waveformSelector.onClicked = [this]() { toggleWaveformMenu(); };
-    waveformSelector.onMenuRequested = [this]() { setWaveformMenuOpen(true); };
+    // 4. Waveform Slide Switch (Saw / Square)
+    contentCanvas.addAndMakeVisible(waveformSwitch);
+    waveformSwitch.setButtonText("");
+    auto* waveParam = audioProcessor.apvts.getParameter("waveform");
+    if (waveParam != nullptr)
+        waveformSwitch.setToggleState(waveParam->getValue() > 0.5f, juce::dontSendNotification);
 
-    waveformMenu = std::make_unique<Replicant303::WaveformMenu>();
-    waveformMenu->onSelect = [this](int index) { selectWaveformIndex(index); };
-    waveformMenu->onDismiss = [this]() { setWaveformMenuOpen(false); };
-    contentCanvas.addChildComponent(*waveformMenu);
-    waveformMenu->setBounds(132, 236, 352, 340);
-    waveformMenu->setVisible(false);
-
-    if (auto* waveParam = audioProcessor.apvts.getParameter("waveform"))
-    {
-        waveformAttachment = std::make_unique<juce::ParameterAttachment>(
-            *waveParam,
-            [this](float newValue)
-            {
-                const int index = juce::roundToInt(newValue);
-                waveformSelector.setWaveformIndex(index);
-
-                if (waveformMenu != nullptr)
-                    waveformMenu->setSelectedIndex(index);
-            });
-
-        waveformAttachment->sendInitialUpdate();
-    }
-
-    // Any click that lands outside the menu dismisses it.
-    contentCanvas.addMouseListener(&clickWatcher, true);
+    waveformSwitch.onClick = [this, waveParam]() {
+        if (waveParam != nullptr)
+            waveParam->setValueNotifyingHost(waveformSwitch.getToggleState() ? 1.0f : 0.0f);
+        contentCanvas.repaint();
+    };
 
     // 5. Distortion On/Off Slide Switch
     contentCanvas.addAndMakeVisible(distActiveSwitch);
@@ -177,8 +157,6 @@ Replicant303AudioProcessorEditor::~Replicant303AudioProcessorEditor()
 {
     Replicant303::ThemeManager::getInstance().removeChangeListener(this);
     stopTimer();
-    contentCanvas.removeMouseListener(&clickWatcher);
-    waveformMenu.reset();
     patternDrawer.reset();
     setLookAndFeel(nullptr);
 }
@@ -543,69 +521,6 @@ void Replicant303AudioProcessorEditor::setZoomFactor(float newZoom)
     applyWindowSizeForZoom();
 }
 
-void Replicant303AudioProcessorEditor::toggleWaveformMenu()
-{
-    setWaveformMenuOpen(! waveformMenuOpen);
-}
-
-void Replicant303AudioProcessorEditor::setWaveformMenuOpen(bool shouldBeOpen)
-{
-    if (waveformMenu == nullptr)
-        return;
-
-    // The bank drops over the panel; the sequencer drawer must be out of the
-    // way so the two never overlap.
-    if (shouldBeOpen && (drawerOpen || drawerAnimating))
-        setPatternDrawerOpen(false, false);
-
-    waveformMenuOpen = shouldBeOpen;
-
-    if (shouldBeOpen)
-    {
-        waveformMenu->setSelectedIndex(waveformSelector.getWaveformIndex());
-        waveformMenu->setBounds(132, 236, 352, 340);
-        waveformMenu->setVisible(true);
-        waveformMenu->toFront(true);
-    }
-    else
-    {
-        waveformMenu->setVisible(false);
-    }
-
-    contentCanvas.repaint();
-}
-
-void Replicant303AudioProcessorEditor::selectWaveformIndex(int index)
-{
-    const int clamped = juce::jlimit(0, Replicant303::numWaveforms - 1, index);
-
-    waveformSelector.setWaveformIndex(clamped);
-
-    if (waveformMenu != nullptr)
-        waveformMenu->setSelectedIndex(clamped);
-
-    if (waveformAttachment != nullptr)
-        waveformAttachment->setValueAsCompleteGesture((float) clamped);
-
-    setWaveformMenuOpen(false);
-}
-
-void Replicant303AudioProcessorEditor::globalMouseDown(const juce::MouseEvent& e)
-{
-    if (! waveformMenuOpen || waveformMenu == nullptr || ! waveformMenu->isVisible())
-        return;
-
-    const auto pos = e.getEventRelativeTo(&contentCanvas).position;
-
-    if (waveformSelector.getBounds().toFloat().contains(pos))
-        return;
-
-    if (waveformMenu->getBounds().toFloat().contains(pos))
-        return;
-
-    setWaveformMenuOpen(false);
-}
-
 void Replicant303AudioProcessorEditor::syncZoomBoxText()
 {
     const int pct = juce::roundToInt(zoomFactor * 100.0f);
@@ -682,9 +597,6 @@ void Replicant303AudioProcessorEditor::updateCanvasTransform()
 //==============================================================================
 void Replicant303AudioProcessorEditor::setPatternDrawerOpen(bool shouldBeOpen, bool animate)
 {
-    if (shouldBeOpen)
-        setWaveformMenuOpen(false);
-
     drawerOpen = shouldBeOpen;
 
     if (shouldBeOpen && patternDrawer != nullptr)
@@ -747,12 +659,6 @@ bool Replicant303AudioProcessorEditor::keyPressed(const juce::KeyPress& key)
             sequencer.start();
 
         contentCanvas.repaint();
-        return true;
-    }
-
-    if (key == juce::KeyPress::escapeKey && waveformMenuOpen)
-    {
-        setWaveformMenuOpen(false);
         return true;
     }
 
@@ -1124,11 +1030,29 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
     }
 
     // 4. Middle Section Silkscreen Frames
-    // Waveform box: the frame is silkscreen, the scope inside is a child
-    // component (WaveformSelector) so it can host the slide-down bank.
+    // Waveform Box
     auto waveBox = juce::Rectangle<float>(132.0f, 136.0f, 126.0f, 99.0f);
     g.setColour(theme().silkscreen.withAlpha(0.70f));
     g.drawRoundedRectangle(waveBox, 3.5f, 1.0f);
+    g.setColour(theme().silkscreen);
+    g.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
+    g.drawText("WAVEFORM", (int)waveBox.getX(), (int)(waveBox.getY() + 4.0f), (int)waveBox.getWidth(), 14, juce::Justification::centred);
+
+    // Saw & Square wave glyphs
+    juce::Path sawGlyph;
+    sawGlyph.startNewSubPath(146.0f, 188.0f);
+    sawGlyph.lineTo(162.0f, 176.0f);
+    sawGlyph.lineTo(162.0f, 188.0f);
+    sawGlyph.lineTo(168.0f, 184.0f);
+    g.strokePath(sawGlyph, juce::PathStrokeType(1.6f));
+
+    juce::Path sqrGlyph;
+    sqrGlyph.startNewSubPath(226.0f, 188.0f);
+    sqrGlyph.lineTo(226.0f, 176.0f);
+    sqrGlyph.lineTo(239.0f, 176.0f);
+    sqrGlyph.lineTo(239.0f, 188.0f);
+    sqrGlyph.lineTo(248.0f, 188.0f);
+    g.strokePath(sqrGlyph, juce::PathStrokeType(1.6f));
 
     // Track / Pattern Group Box
     auto trkBox = juce::Rectangle<float>(268.0f, 136.0f, 126.0f, 99.0f);
@@ -1770,11 +1694,8 @@ void Replicant303AudioProcessorEditor::layoutCanvasChildren()
     tempoKnob.slider.setBounds(32, 145, largeKnobSize, largeKnobSize);
     volumeKnob.slider.setBounds(964, 145, largeKnobSize, largeKnobSize);
 
-    // Waveform scope inside the WAVEFORM box, and the dropdown it opens.
-    waveformSelector.setBounds(136, 140, 118, 91);
-
-    if (waveformMenu != nullptr)
-        waveformMenu->setBounds(132, 236, 352, 340);
+    // Waveform Switch (Saw / Square)
+    waveformSwitch.setBounds(172, 170, 46, 24);
 
     // Track Selector Rotary Switch
     trackKnob.slider.setBounds(303, 158, 56, 56);

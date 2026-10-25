@@ -17,11 +17,6 @@ The individual panel / drawer screenshots are produced first:
     ./build/generate_snapshot assets/replicant303_ui_obsidian_red.png 1 0
     ./build/generate_snapshot assets/replicant303_sequencer.png 0 1 200
     ./build/generate_snapshot assets/replicant303_sequencer_obsidian_red.png 1 1 400
-
-The waveform-bank screenshots are produced directly by generate_snapshot:
-
-    ./build/generate_snapshot assets/replicant303_waveforms.png 0 0 0 1 4
-    ./build/generate_snapshot assets/replicant303_waveforms_obsidian_red.png 1 0 0 1 2
 """
 
 import os

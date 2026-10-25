@@ -1,5 +1,4 @@
 #include "PresetBank.h"
-#include "DSP/Common303.h"
 
 #include <cmath>
 
@@ -177,7 +176,7 @@ namespace Replicant303
 
         pattern.sanitise();
 
-        waveform  = juce::jlimit (0, Replicant303::numWaveforms - 1, waveform);
+        waveform  = juce::jlimit (0, 1, waveform);
         tuning    = juce::jlimit (-12.0f, 12.0f, tuning);
         cutoff    = juce::jlimit (25.0f, 4500.0f, cutoff);
         resonance = juce::jlimit (0.0f, 1.0f, resonance);
@@ -452,7 +451,7 @@ namespace Replicant303
         switch (archetype)
         {
             case 0: // Classic acid
-                preset.waveform = rng.chance (0.85f) ? 0 : 1;
+                preset.waveform = 0;
                 preset.cutoff = logBetween (rng, 170.0f, 900.0f);
                 preset.resonance = rng.between (0.55f, 0.84f);
                 preset.envMod = rng.between (0.50f, 0.82f);
@@ -466,10 +465,7 @@ namespace Replicant303
                 break;
 
             case 1: // Sub pressure
-                preset.waveform = rng.chance (0.62f) ? 0
-                                 : (rng.chance (0.5f)
-                                        ? static_cast<int> (Waveform::Triangle)
-                                        : static_cast<int> (Waveform::Sine));
+                preset.waveform = 0;
                 preset.cutoff = logBetween (rng, 70.0f, 380.0f);
                 preset.resonance = rng.between (0.30f, 0.68f);
                 preset.envMod = rng.between (0.30f, 0.68f);
@@ -483,10 +479,7 @@ namespace Replicant303
                 break;
 
             case 2: // Bright / open
-                preset.waveform = rng.chance (0.30f) ? 1
-                                 : (rng.chance (0.5f)
-                                        ? static_cast<int> (Waveform::Pulse25)
-                                        : static_cast<int> (Waveform::Pulse33));
+                preset.waveform = rng.chance (0.75f) ? 1 : 0;
                 preset.cutoff = logBetween (rng, 800.0f, 2600.0f);
                 preset.resonance = rng.between (0.35f, 0.78f);
                 preset.envMod = rng.between (0.68f, 0.95f);
@@ -500,8 +493,7 @@ namespace Replicant303
                 break;
 
             case 3: // Screamer
-                preset.waveform = rng.chance (0.70f) ? 0
-                                                     : static_cast<int> (Waveform::Sync2);
+                preset.waveform = 0;
                 preset.cutoff = logBetween (rng, 280.0f, 1300.0f);
                 preset.resonance = rng.between (0.68f, 0.94f);
                 preset.envMod = rng.between (0.58f, 0.90f);
@@ -515,9 +507,7 @@ namespace Replicant303
                 break;
 
             case 4: // Germanium fuzz
-                preset.waveform = rng.chance (0.45f) ? 1
-                                 : (rng.chance (0.5f)
-                                        ? static_cast<int> (Waveform::Pulse40) : 0);
+                preset.waveform = rng.chance (0.70f) ? 1 : 0;
                 preset.cutoff = logBetween (rng, 200.0f, 1000.0f);
                 preset.resonance = rng.between (0.45f, 0.80f);
                 preset.envMod = rng.between (0.48f, 0.86f);
@@ -531,10 +521,7 @@ namespace Replicant303
                 break;
 
             case 5: // Wavefolder
-                preset.waveform = rng.chance (0.45f) ? 0
-                                 : (rng.chance (0.5f)
-                                        ? static_cast<int> (Waveform::Fold2)
-                                        : static_cast<int> (Waveform::Fold3));
+                preset.waveform = 0;
                 preset.cutoff = logBetween (rng, 380.0f, 1900.0f);
                 preset.resonance = rng.between (0.42f, 0.82f);
                 preset.envMod = rng.between (0.62f, 0.94f);
@@ -548,10 +535,7 @@ namespace Replicant303
                 break;
 
             case 6: // Clean / dry
-                preset.waveform = rng.chance (0.40f) ? 0
-                                 : (rng.chance (0.5f)
-                                        ? static_cast<int> (Waveform::Triangle)
-                                        : static_cast<int> (Waveform::Sine));
+                preset.waveform = rng.chance (0.55f) ? 0 : 1;
                 preset.cutoff = logBetween (rng, 650.0f, 2200.0f);
                 preset.resonance = rng.between (0.18f, 0.55f);
                 preset.envMod = rng.between (0.38f, 0.78f);
@@ -565,9 +549,7 @@ namespace Replicant303
                 break;
 
             default: // Hard / industrial
-                preset.waveform = rng.chance (0.45f) ? 0
-                                 : (rng.chance (0.5f)
-                                        ? 1 : static_cast<int> (Waveform::Bit3));
+                preset.waveform = 0;
                 preset.cutoff = logBetween (rng, 140.0f, 720.0f);
                 preset.resonance = rng.between (0.60f, 0.94f);
                 preset.envMod = rng.between (0.70f, 0.97f);

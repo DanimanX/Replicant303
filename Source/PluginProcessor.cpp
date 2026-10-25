@@ -38,14 +38,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout Replicant303AudioProcessor::
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-    // 1. Waveform Bank (60 shapes; the scope in the panel selects them)
-    juce::StringArray waveformNames;
-
-    for (int i = 0; i < Replicant303::numWaveforms; ++i)
-        waveformNames.add(Replicant303::getWaveformName(i));
-
+    // 1. Waveform Switch (Saw / Square)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ "waveform", 1 }, "Waveform", waveformNames, 0));
+        juce::ParameterID{ "waveform", 1 }, "Waveform",
+        juce::StringArray{ "Sawtooth", "Square" }, 0));
 
     // 2. Tuning (-12 to +12 semitones)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(

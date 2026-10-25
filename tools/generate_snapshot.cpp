@@ -6,7 +6,6 @@
 // be reviewed without opening a host. Used for the README preview.
 //
 //   generate_snapshot [output.png] [themeIndex] [drawerOpen] [presetIndex]
-//                     [waveformMenu] [waveformIndex]
 //
 // The editor is created with whatever skin is stored in the processor, and when
 // themeIndex is supplied the skin is then switched *live* through the public
@@ -15,9 +14,6 @@
 //
 // presetIndex (0..511) loads a vault slot before rendering, so the snapshot
 // shows the preset row and the name window exactly as a user would see them.
-//
-// waveformMenu (0/1) drops the 60-shape VCO bank open, and waveformIndex
-// selects the shape shown in the scope (and highlighted in the menu).
 
 int main(int argc, char* argv[])
 {
@@ -114,34 +110,6 @@ int main(int argc, char* argv[])
                   << Replicant303::PresetBank::getBankLetter (bank).toRawUTF8()
                   << " " << (slot + 1) << " "
                   << processor.getPresetBank().getPreset (bank, slot).name.toRawUTF8()
-                  << std::endl;
-    }
-
-    // Optionally select a shape (fifth/sixth arguments) and drop the bank open,
-    // so the README can show the waveform browser without a mouse.
-    auto* concreteEditor = dynamic_cast<Replicant303AudioProcessorEditor*> (editor.get());
-
-    if (concreteEditor != nullptr && argc > 6)
-    {
-        const int waveformIndex = juce::String (argv[6]).getIntValue();
-
-        if (waveformIndex >= 0 && waveformIndex < Replicant303::numWaveforms)
-        {
-            if (auto* waveParam = processor.apvts.getParameter ("waveform"))
-                waveParam->setValueNotifyingHost (waveParam->convertTo0to1 ((float) waveformIndex));
-
-            juce::MessageManager::getInstance()->runDispatchLoopUntil (120);
-            std::cout << "[INFO] Waveform: " << waveformIndex << " "
-                      << Replicant303::getWaveformName (waveformIndex) << std::endl;
-        }
-    }
-
-    if (concreteEditor != nullptr && argc > 5 && juce::String (argv[5]).getIntValue() != 0)
-    {
-        concreteEditor->setWaveformMenuOpen (true);
-        juce::MessageManager::getInstance()->runDispatchLoopUntil (150);
-        std::cout << "[INFO] Waveform bank: "
-                  << (concreteEditor->isWaveformMenuOpen() ? "open" : "closed")
                   << std::endl;
     }
 
