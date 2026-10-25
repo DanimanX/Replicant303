@@ -48,6 +48,9 @@ public:
     // Access to synth engine for UI telemetry
     Replicant303::SynthEngine& getSynthEngine() noexcept { return synthEngine; }
 
+    /** Oscilloscope feed used by the 3D wavetable display. */
+    const Replicant303::ScopeTap& getScopeTap() const noexcept { return synthEngine.getScopeTap(); }
+
     // Pattern sequencer (pattern bank, clock, MIDI export)
     Replicant303::PatternSequencer& getSequencer() noexcept { return sequencer; }
     const Replicant303::PatternSequencer& getSequencer() const noexcept { return sequencer; }

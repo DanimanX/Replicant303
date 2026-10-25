@@ -17,6 +17,11 @@ The individual panel / drawer screenshots are produced first:
     ./build/generate_snapshot assets/replicant303_ui_obsidian_red.png 1 0
     ./build/generate_snapshot assets/replicant303_sequencer.png 0 1 200
     ./build/generate_snapshot assets/replicant303_sequencer_obsidian_red.png 1 1 400
+
+The 3D wavetable hologram screenshots come straight from generate_snapshot:
+
+    ./build/generate_snapshot assets/replicant303_wavetable3d.png 0 0 0 1
+    ./build/generate_snapshot assets/replicant303_wavetable3d_obsidian_red.png 1 0 0 1
 """
 
 import os

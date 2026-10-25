@@ -6,6 +6,7 @@
 #include "GUI/Replicant303Theme.h"
 #include "GUI/PanelLayout.h"
 #include "GUI/PatternDrawer.h"
+#include "GUI/CyberWavetable3D.h"
 
 class Replicant303AudioProcessorEditor : public juce::AudioProcessorEditor,
                                          private juce::Timer,
@@ -29,6 +30,15 @@ public:
     /** Adjusts the UI zoom factor (clamped to 0.50 .. 3.00, i.e. 50% .. 300%). */
     void setZoomFactor(float newZoom);
     float getZoomFactor() const noexcept { return zoomFactor; }
+
+    /** Opens or closes the 3D wavetable hologram. The collapsed scope lives in
+        the WAVEFORM box; opening it grows over the panel. `animate = false` is
+        used by the offline snapshot tool and the tests. */
+    void setWavetableHoloOpen(bool shouldBeOpen, bool animate = true);
+    bool isWavetableHoloOpen() const noexcept { return holoOpen; }
+
+    /** The GPU/software wavetable scope (exposed for diagnostics and tests). */
+    Replicant303::CyberWavetable3D& getWavetableScope() noexcept { return wavetable3D; }
 
 private:
     class PanelCanvas : public juce::Component
@@ -112,6 +122,29 @@ private:
 
     juce::ComboBox themeBox;     // Panel skin selector (Green / Black-Red / ...)
     std::unique_ptr<juce::ParameterAttachment> themeAttachment;
+
+    // -------------------------------------------------------------------------
+    // Cyberpunk 3D wavetable scope (GPU-rendered, visualiser only)
+    // -------------------------------------------------------------------------
+    Replicant303::CyberWavetable3D wavetable3D;
+    bool holoOpen = false;
+    bool holoAnimating = false;
+    float holoProgress = 0.0f;
+    float holoAnimFrom = 0.0f;
+    double holoAnimStartMs = 0.0;
+
+    juce::Rectangle<float> holoBoundsFor(float progress) const;
+    void applyHoloProgress();
+
+    struct ClickWatcher : public juce::MouseListener
+    {
+        explicit ClickWatcher(Replicant303AudioProcessorEditor& o) : owner(o) {}
+        void mouseDown(const juce::MouseEvent& e) override { owner.globalMouseDown(e); }
+
+        Replicant303AudioProcessorEditor& owner;
+    };
+    ClickWatcher clickWatcher { *this };
+    void globalMouseDown(const juce::MouseEvent& e);
 
     juce::ComboBox zoomBox;      // UI Zoom selector (50% - 300%)
     std::unique_ptr<juce::ParameterAttachment> zoomAttachment;

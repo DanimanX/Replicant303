@@ -1121,6 +1121,162 @@ namespace
     }
 }
 
+
+//==============================================================================
+// 3D wavetable scope (tap + hologram)
+//==============================================================================
+namespace
+{
+    void testWavetableScope()
+    {
+        section ("Scope tap");
+
+        using namespace Replicant303;
+
+        {
+            ScopeTap tap;
+
+            float out[16] = {};
+            check (! tap.copyLatest (out, 8), "an empty tap reports missing history");
+            check (out[0] == 0.0f && out[7] == 0.0f, "an empty tap reads as silence");
+
+            for (int i = 0; i < 100; ++i)
+                tap.push ((float) i);
+
+            check (tap.copyLatest (out, 4), "the tap serves a full window once filled");
+            check (out[0] == 96.0f && out[1] == 97.0f && out[2] == 98.0f && out[3] == 99.0f,
+                   "the tap returns the newest samples, oldest first");
+
+            // Overrun the ring: it must keep the newest window and not wrap.
+            for (int i = 100; i < ScopeTap::capacity + 500; ++i)
+                tap.push ((float) i);
+
+            const int last = ScopeTap::capacity + 499;
+            check (tap.copyLatest (out, 4), "the tap still serves after wrapping");
+            check (out[3] == (float) last && out[0] == (float) (last - 3),
+                   "wrapping the ring keeps the newest samples in order");
+
+            tap.setNoteState (1, 220.0f, 0.4f);
+            check (tap.getWaveformIndex() == 1 && std::abs (tap.getFrequencyHz() - 220.0f) < 0.01f,
+                   "the tap publishes the voice state");
+            check (tap.isLive(), "an open envelope marks the voice as live");
+
+            tap.setNoteState (0, 110.0f, 0.0f);
+            check (! tap.isLive(), "a closed envelope idles the scope");
+        }
+
+        section ("Scope audio feed");
+
+        {
+            // The scope must observe the real pre-filter VCO, and the VCO must
+            // still be the original 303 saw/square pair after the revert.
+            SynthEngine engine;
+            engine.prepare (48000.0);
+            engine.setWaveform (Waveform::Sawtooth);
+            engine.setDecay (2.5f);
+
+            juce::AudioBuffer<float> buffer (2, 512);
+            juce::MidiBuffer midi;
+            midi.addEvent (juce::MidiMessage::noteOn (1, 45, 1.0f), 0);   // A2 = 110 Hz
+            engine.processBlock (buffer, midi);
+
+            float scope[1024] = {};
+            engine.getScopeTap().copyLatest (scope, 1024);
+
+            float peak = 0.0f;
+            double sum = 0.0;
+            for (auto v : scope)
+            {
+                peak = juce::jmax (peak, std::abs (v));
+                sum += (double) v * v;
+            }
+
+            check (peak > 0.4f && peak <= 1.0f, "the tap receives the raw VCO at full level");
+            check (std::sqrt (sum / 1024.0) > 0.1, "the tap window carries real energy");
+            check (engine.getScopeTap().isLive(), "playing a note drives the scope live");
+            check (std::abs (engine.getScopeTap().getFrequencyHz() - 110.0f) < 1.5f,
+                   "the scope reports the played frequency");
+            check (engine.getScopeTap().getWaveformIndex() == (int) Waveform::Sawtooth,
+                   "the scope reports the selected waveform");
+        }
+
+        section ("3D wavetable hologram");
+
+        CyberWavetable3D::setSoftwareRenderingForced (true);
+
+        {
+            Replicant303AudioProcessor processor;
+            std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
+            auto* concrete = dynamic_cast<Replicant303AudioProcessorEditor*> (editor.get());
+
+            check (concrete != nullptr, "editor hosts the 3D wavetable scope");
+
+            if (concrete == nullptr)
+                return;
+
+            editor->setSize (1080, 590);
+
+            auto& scope = concrete->getWavetableScope();
+            check (! scope.isUsingGPU(), "forcing software rendering keeps the scope off the GPU (headless)");
+            check (scope.getWidth() < 200, "the collapsed scope lives inside the WAVEFORM box");
+
+            concrete->setWavetableHoloOpen (true, false);
+            check (concrete->isWavetableHoloOpen(), "the hologram opens");
+            check (editor->getWidth() == 1080 && editor->getHeight() == 590,
+                   "the hologram overlays the panel without resizing the window");
+            check (scope.getWidth() > 400 && scope.getHeight() > 250,
+                   "the open hologram grows over the panel");
+            check (scope.isExpanded(), "the scope switches to its expanded HUD");
+
+            // Draw it: the scene must produce neon traces, not an empty panel.
+            juce::Image frame (juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
+            {
+                juce::Graphics g (frame);
+                editor->paintEntireComponent (g, true);
+            }
+
+            int cyanPixels = 0;
+            int magentaPixels = 0;
+
+            for (int y = scope.getY() + 20; y < scope.getBottom() - 20; y += 2)
+            {
+                for (int x = scope.getX() + 20; x < scope.getRight() - 20; x += 2)
+                {
+                    const auto c = frame.getPixelAt (x, y);
+
+                    if (c.getBlue() > 150 && c.getGreen() > 120 && c.getRed() < 120)
+                        ++cyanPixels;
+
+                    if (c.getRed() > 45 && c.getBlue() > 60 && c.getGreen() < 90
+                        && c.getBlue() > c.getGreen())
+                        ++magentaPixels;
+                }
+            }
+
+            check (cyanPixels > 40, "the hologram renders the cyan near field");
+            check (magentaPixels > 10, "the hologram renders the magenta far field");
+
+            check (concrete->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)),
+                   "Escape is handled while the hologram is open");
+            check (! concrete->isWavetableHoloOpen(), "Escape closes the hologram");
+
+            // Closing is animated on the editor timer; let it finish.
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (500);
+            check (scope.getWidth() < 200, "the animation restores the inline scope");
+            check (editor->getWidth() == 1080 && editor->getHeight() == 590,
+                   "closing the hologram leaves the window size alone");
+
+            concrete->setWavetableHoloOpen (true, false);
+            concrete->setPatternDrawerOpen (true, false);
+            check (! concrete->isWavetableHoloOpen(),
+                   "opening the sequencer drawer closes the hologram");
+            concrete->setPatternDrawerOpen (false, false);
+        }
+
+        CyberWavetable3D::setSoftwareRenderingForced (false);
+    }
+}
+
 //==============================================================================
 int main()
 {
@@ -1137,6 +1293,7 @@ int main()
     testSynthEngine();
     testEngineEdges();
     testProcessor();
+    testWavetableScope();
     testEditorDrawer();
 
     std::cout << "\n----------------------------------------" << std::endl;

@@ -6,6 +6,7 @@
 // be reviewed without opening a host. Used for the README preview.
 //
 //   generate_snapshot [output.png] [themeIndex] [drawerOpen] [presetIndex]
+//                     [wavetableHolo]
 //
 // The editor is created with whatever skin is stored in the processor, and when
 // themeIndex is supplied the skin is then switched *live* through the public
@@ -14,6 +15,10 @@
 //
 // presetIndex (0..511) loads a vault slot before rendering, so the snapshot
 // shows the preset row and the name window exactly as a user would see them.
+//
+// wavetableHolo (0/1) expands the cyberpunk 3D wavetable hologram. The offscreen
+// renderer always uses the scope's software path, which draws the same scene the
+// GPU renders in a host, so the screenshot is deterministic on every machine.
 
 int main(int argc, char* argv[])
 {
@@ -22,6 +27,11 @@ int main(int argc, char* argv[])
         : juce::File::getCurrentWorkingDirectory().getChildFile("replicant303_ui.png");
 
     juce::ScopedJuceInitialiser_GUI gui;
+
+    // Snapshots are rendered offscreen, where there is no peer to attach an
+    // OpenGL context to: pin the scope to its software renderer.
+    Replicant303::CyberWavetable3D::setSoftwareRenderingForced (true);
+
     Replicant303AudioProcessor processor;
 
     std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
@@ -111,6 +121,31 @@ int main(int argc, char* argv[])
                   << " " << (slot + 1) << " "
                   << processor.getPresetBank().getPreset (bank, slot).name.toRawUTF8()
                   << std::endl;
+    }
+
+    // Optionally expand the 3D wavetable hologram (fifth argument).
+    auto* concreteEditor = dynamic_cast<Replicant303AudioProcessorEditor*> (editor.get());
+
+    if (concreteEditor != nullptr && argc > 5 && juce::String (argv[5]).getIntValue() != 0)
+    {
+        concreteEditor->setWavetableHoloOpen (true, false);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (150);
+        std::cout << "[INFO] Wavetable hologram: "
+                  << (concreteEditor->isWavetableHoloOpen() ? "open" : "closed")
+                  << " (" << (concreteEditor->getWavetableScope().isUsingGPU() ? "GPU" : "software")
+                  << " renderer)" << std::endl;
+    }
+
+    // Feed the scope with a held note so the screenshot shows the live VCO
+    // instead of the idle hologram. Nothing is audible: the buffers are local.
+    processor.prepareToPlay (48000.0, 512);
+    processor.getKeyboardState().noteOn (1, 40, 0.9f);
+
+    for (int block = 0; block < 30; ++block)
+    {
+        juce::AudioBuffer<float> buffer (2, 512);
+        juce::MidiBuffer midi;
+        processor.processBlock (buffer, midi);
     }
 
     juce::Image img(juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);

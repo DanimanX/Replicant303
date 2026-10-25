@@ -5,6 +5,7 @@
 #include "DiodeLadderFilter.h"
 #include "Envelope303.h"
 #include "DistortionUnit.h"
+#include "ScopeTap.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 
 namespace Replicant303
@@ -41,6 +42,10 @@ namespace Replicant303
         void setDistortionTone(float tone01) noexcept { distortion.setTone(tone01); }
         void setDistortionMix(float mix01) noexcept { distortion.setMix(mix01); }
 
+        /** Oscilloscope feed for the 3D wavetable display (audio thread writes,
+            UI thread reads). */
+        const ScopeTap& getScopeTap() const noexcept { return scopeTap; }
+
         // Realtime UI telemetry
         bool isSlideActive() const noexcept { return slideLedActive; }
         bool isAccentActive() const noexcept { return accentLedActive; }
@@ -53,6 +58,7 @@ namespace Replicant303
         // DSP Submodules
         Oscillator303 osc;
         DiodeLadderFilter filter;
+        ScopeTap scopeTap;
         Envelope303 env;
         DistortionUnit distortion;
 

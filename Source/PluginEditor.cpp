@@ -5,6 +5,12 @@ namespace
     constexpr int kNumZoomPresets = 9;
     constexpr int kZoomPercentages[kNumZoomPresets] =
         { 50, 75, 100, 125, 150, 175, 200, 250, 300 };
+
+    /** Collapsed scope inside the WAVEFORM box. */
+    const juce::Rectangle<float> kHoloCollapsed { 137.0f, 150.0f, 116.0f, 52.0f };
+
+    /** Expanded hologram, centred over the panel without covering the header. */
+    const juce::Rectangle<float> kHoloExpanded { 150.0f, 138.0f, 560.0f, 330.0f };
 }
 
 Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303AudioProcessor& p)
@@ -118,6 +124,16 @@ Replicant303AudioProcessorEditor::Replicant303AudioProcessorEditor(Replicant303A
         contentCanvas.repaint();
     };
 
+    // 4b. Cyberpunk 3D wavetable scope. A visualiser only: it reads the raw VCO
+    //     through a lock-free tap, so the saw/square voice stays untouched.
+    wavetable3D.setTap(&audioProcessor.getScopeTap());
+    wavetable3D.setBounds(kHoloCollapsed.toNearestInt());
+    wavetable3D.onToggleRequested = [this]() { setWavetableHoloOpen(! holoOpen); };
+    contentCanvas.addAndMakeVisible(wavetable3D);
+
+    // Clicks anywhere else close the hologram.
+    contentCanvas.addMouseListener(&clickWatcher, true);
+
     // 5. Distortion On/Off Slide Switch
     contentCanvas.addAndMakeVisible(distActiveSwitch);
     distActiveSwitch.setButtonText("");
@@ -157,6 +173,7 @@ Replicant303AudioProcessorEditor::~Replicant303AudioProcessorEditor()
 {
     Replicant303::ThemeManager::getInstance().removeChangeListener(this);
     stopTimer();
+    contentCanvas.removeMouseListener(&clickWatcher);
     patternDrawer.reset();
     setLookAndFeel(nullptr);
 }
@@ -426,6 +443,28 @@ void Replicant303AudioProcessorEditor::timerCallback()
         }
     }
 
+    // --- hologram animation ---------------------------------------------------
+    if (holoAnimating)
+    {
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        const float t = juce::jlimit(0.0f, 1.0f, (float) ((now - holoAnimStartMs) / 240.0));
+        const float eased = 1.0f - std::pow(1.0f - t, 3.0f);
+        const float target = holoOpen ? 1.0f : 0.0f;
+
+        holoProgress = holoAnimFrom + (target - holoAnimFrom) * eased;
+        applyHoloProgress();
+
+        if (t >= 1.0f)
+        {
+            holoAnimating = false;
+            holoProgress = target;
+            applyHoloProgress();
+
+            if (! drawerAnimating)
+                startTimerHz(30);
+        }
+    }
+
     if (patternDrawer != nullptr && drawerProgress > 0.0f)
         patternDrawer->refresh();
 
@@ -521,6 +560,64 @@ void Replicant303AudioProcessorEditor::setZoomFactor(float newZoom)
     applyWindowSizeForZoom();
 }
 
+juce::Rectangle<float> Replicant303AudioProcessorEditor::holoBoundsFor(float progress) const
+{
+    const float t = juce::jlimit(0.0f, 1.0f, progress);
+    const auto lerp = [] (float a, float b, float k) { return a + (b - a) * k; };
+
+    return { lerp(kHoloCollapsed.getX(), kHoloExpanded.getX(), t),
+             lerp(kHoloCollapsed.getY(), kHoloExpanded.getY(), t),
+             lerp(kHoloCollapsed.getWidth(), kHoloExpanded.getWidth(), t),
+             lerp(kHoloCollapsed.getHeight(), kHoloExpanded.getHeight(), t) };
+}
+
+void Replicant303AudioProcessorEditor::applyHoloProgress()
+{
+    wavetable3D.setBounds(holoBoundsFor(holoProgress).toNearestInt());
+    wavetable3D.setExpanded(holoProgress > 0.5f);
+
+    if (holoProgress > 0.001f)
+        wavetable3D.toFront(false);
+}
+
+void Replicant303AudioProcessorEditor::setWavetableHoloOpen(bool shouldBeOpen, bool animate)
+{
+    // The hologram and the sequencer drawer occupy the same panel space.
+    if (shouldBeOpen && (drawerOpen || drawerAnimating))
+        setPatternDrawerOpen(false, false);
+
+    holoOpen = shouldBeOpen;
+
+    if (! animate)
+    {
+        holoAnimating = false;
+        holoProgress = shouldBeOpen ? 1.0f : 0.0f;
+        applyHoloProgress();
+        contentCanvas.repaint();
+        return;
+    }
+
+    holoAnimFrom = holoProgress;
+    holoAnimStartMs = juce::Time::getMillisecondCounterHiRes();
+    holoAnimating = true;
+    startTimerHz(60);
+    applyHoloProgress();
+    contentCanvas.repaint();
+}
+
+void Replicant303AudioProcessorEditor::globalMouseDown(const juce::MouseEvent& e)
+{
+    if (! holoOpen || holoProgress <= 0.001f)
+        return;
+
+    const auto pos = e.getEventRelativeTo(&contentCanvas).position;
+
+    if (wavetable3D.getBounds().toFloat().contains(pos))
+        return;
+
+    setWavetableHoloOpen(false);
+}
+
 void Replicant303AudioProcessorEditor::syncZoomBoxText()
 {
     const int pct = juce::roundToInt(zoomFactor * 100.0f);
@@ -597,6 +694,9 @@ void Replicant303AudioProcessorEditor::updateCanvasTransform()
 //==============================================================================
 void Replicant303AudioProcessorEditor::setPatternDrawerOpen(bool shouldBeOpen, bool animate)
 {
+    if (shouldBeOpen)
+        setWavetableHoloOpen(false, false);
+
     drawerOpen = shouldBeOpen;
 
     if (shouldBeOpen && patternDrawer != nullptr)
@@ -659,6 +759,12 @@ bool Replicant303AudioProcessorEditor::keyPressed(const juce::KeyPress& key)
             sequencer.start();
 
         contentCanvas.repaint();
+        return true;
+    }
+
+    if (key == juce::KeyPress::escapeKey && holoOpen)
+    {
+        setWavetableHoloOpen(false);
         return true;
     }
 
@@ -1036,23 +1142,13 @@ void Replicant303AudioProcessorEditor::drawSilkscreenGraphics(juce::Graphics& g)
     g.drawRoundedRectangle(waveBox, 3.5f, 1.0f);
     g.setColour(theme().silkscreen);
     g.setFont(Replicant303::uiFont(9.5f, juce::Font::bold));
-    g.drawText("WAVEFORM", (int)waveBox.getX(), (int)(waveBox.getY() + 4.0f), (int)waveBox.getWidth(), 14, juce::Justification::centred);
+    g.drawText("WAVEFORM", (int)waveBox.getX() + 5, (int)waveBox.getY() + 2, (int)waveBox.getWidth() - 10, 12, juce::Justification::centred);
 
-    // Saw & Square wave glyphs
-    juce::Path sawGlyph;
-    sawGlyph.startNewSubPath(146.0f, 188.0f);
-    sawGlyph.lineTo(162.0f, 176.0f);
-    sawGlyph.lineTo(162.0f, 188.0f);
-    sawGlyph.lineTo(168.0f, 184.0f);
-    g.strokePath(sawGlyph, juce::PathStrokeType(1.6f));
-
-    juce::Path sqrGlyph;
-    sqrGlyph.startNewSubPath(226.0f, 188.0f);
-    sqrGlyph.lineTo(226.0f, 176.0f);
-    sqrGlyph.lineTo(239.0f, 176.0f);
-    sqrGlyph.lineTo(239.0f, 188.0f);
-    sqrGlyph.lineTo(248.0f, 188.0f);
-    g.strokePath(sqrGlyph, juce::PathStrokeType(1.6f));
+    // The scope is a child component (CyberWavetable3D); only the legend of the
+    // hardware saw/square switch is printed here.
+    g.setFont(Replicant303::uiFont(7.0f, juce::Font::bold));
+    g.drawText("SAW", 137, 206, 30, 21, juce::Justification::centredRight);
+    g.drawText("SQR", 220, 206, 34, 21, juce::Justification::centredLeft);
 
     // Track / Pattern Group Box
     auto trkBox = juce::Rectangle<float>(268.0f, 136.0f, 126.0f, 99.0f);
@@ -1694,8 +1790,10 @@ void Replicant303AudioProcessorEditor::layoutCanvasChildren()
     tempoKnob.slider.setBounds(32, 145, largeKnobSize, largeKnobSize);
     volumeKnob.slider.setBounds(964, 145, largeKnobSize, largeKnobSize);
 
-    // Waveform Switch (Saw / Square)
-    waveformSwitch.setBounds(172, 170, 46, 24);
+    // Waveform switch under the 3D scope, and the scope itself.
+    waveformSwitch.setBounds(170, 206, 48, 21);
+    wavetable3D.setBounds(holoBoundsFor(holoProgress).toNearestInt());
+    wavetable3D.setExpanded(holoProgress > 0.5f);
 
     // Track Selector Rotary Switch
     trackKnob.slider.setBounds(303, 158, 56, 56);

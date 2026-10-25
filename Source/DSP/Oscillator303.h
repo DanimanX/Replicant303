@@ -14,6 +14,7 @@ namespace Replicant303
         void reset() noexcept;
 
         void setWaveform(Waveform wave) noexcept { currentWaveform = wave; }
+        Waveform getWaveform() const noexcept { return currentWaveform; }
         void setFrequency(float freqHz) noexcept;
         void setTuningSemi(float semi) noexcept;
 
