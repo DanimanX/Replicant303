@@ -7,6 +7,8 @@
 #include "DistortionUnit.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include <array>
+
 namespace Replicant303
 {
     class SynthEngine
@@ -44,8 +46,10 @@ namespace Replicant303
         // Realtime UI telemetry
         bool isSlideActive() const noexcept { return slideLedActive; }
         bool isAccentActive() const noexcept { return accentLedActive; }
+        /** MIDI note last triggered, or -1 when no voice is sounding. The
+            -1 is what stops a panel LED from staying lit after the note ends,
+            so it is owned here rather than derived by the UI. */
         int getLastMidiNote() const noexcept { return lastNoteNumber; }
-        int getLastVelocity() const noexcept { return lastVelocity; }
 
     private:
         double sampleRate = 44100.0;
@@ -68,7 +72,15 @@ namespace Replicant303
             int noteNumber = -1;
             int velocity = 0;
         };
-        std::vector<ActiveNote> noteStack;
+
+        // Fixed-capacity note stack. A std::vector reserved for 8 notes still
+        // reallocated on stage when a controller held more, and that happened
+        // inside the audio callback. The capacity is deliberately deeper than
+        // any 303 use case so the overflow path below is effectively dead, but
+        // it still refuses to drop the oldest note silently if it is reached.
+        static constexpr int maxHeldNotes = 32;
+        std::array<ActiveNote, (size_t) maxHeldNotes> noteStack {};
+        int numHeldNotes = 0;
 
         float targetPitchHz = 110.0f;
         float currentPitchHz = 110.0f;
@@ -80,7 +92,7 @@ namespace Replicant303
         // Telemetry for LED display
         bool slideLedActive = false;
         bool accentLedActive = false;
-        int lastNoteNumber = 36; // C1 / C2
+        int lastNoteNumber = -1; // C1 / C2 when sounding; -1 while silent
         int lastVelocity = 100;
 
         void handleMidiMessage(const juce::MidiMessage& msg) noexcept;

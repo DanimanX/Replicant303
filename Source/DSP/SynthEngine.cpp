@@ -5,7 +5,6 @@ namespace Replicant303
 {
     SynthEngine::SynthEngine()
     {
-        noteStack.reserve(8);
         reset();
     }
 
@@ -29,12 +28,14 @@ namespace Replicant303
         env.reset();
         distortion.reset();
 
-        noteStack.clear();
+        numHeldNotes = 0;
         targetPitchHz = 110.0f;
         currentPitchHz = 110.0f;
         pitchBendSemi = 0.0f;
         pitchBendFactor = 1.0f;
         lastSetPitchHz = -1.0f;
+        lastNoteNumber = -1;
+        lastVelocity = 100;
 
         slideLedActive = false;
         accentLedActive = false;
@@ -54,7 +55,7 @@ namespace Replicant303
         lastVelocity = velocity;
 
         bool isAccented = (velocity >= 100);
-        bool isLegato = !noteStack.empty();
+        bool isLegato = (numHeldNotes > 0);
 
         targetPitchHz = midiToFreq(static_cast<float>(noteNumber));
 
@@ -73,29 +74,59 @@ namespace Replicant303
         accentLedActive = isAccented;
         env.noteOn(isAccented, isLegato);
 
-        noteStack.push_back({ noteNumber, velocity });
+        // Bounded push. At capacity the oldest note is forgotten rather than
+        // letting a runaway controller grow the stack without limit; the note
+        // still sounds, it just stops being tracked for the legato hand-off.
+        if (numHeldNotes < maxHeldNotes)
+        {
+            noteStack[(size_t) numHeldNotes++] = { noteNumber, velocity };
+        }
+        else
+        {
+            for (int i = 1; i < maxHeldNotes; ++i)
+                noteStack[(size_t) (i - 1)] = noteStack[(size_t) i];
+
+            noteStack[(size_t) (maxHeldNotes - 1)] = { noteNumber, velocity };
+        }
     }
 
     void SynthEngine::handleNoteOff(int noteNumber) noexcept
     {
-        auto it = std::find_if(noteStack.begin(), noteStack.end(),
-                               [noteNumber](const ActiveNote& n) { return n.noteNumber == noteNumber; });
+        for (int i = 0; i < numHeldNotes; ++i)
+        {
+            if (noteStack[(size_t) i].noteNumber != noteNumber)
+                continue;
 
-        if (it != noteStack.end())
-            noteStack.erase(it);
+            // Compact in place instead of erasing from a heap container: this
+            // runs from the audio callback.
+            for (int j = i + 1; j < numHeldNotes; ++j)
+                noteStack[(size_t) (j - 1)] = noteStack[(size_t) j];
 
-        if (noteStack.empty())
+            --numHeldNotes;
+            break;
+        }
+
+        if (numHeldNotes == 0)
         {
             env.noteOff();
             slideLedActive = false;
             accentLedActive = false;
+            // No voice is left, so telemetry must stop reporting one. The panel
+            // reads this to light a key, and a value that outlived the note
+            // kept the LED on until the next note replaced it.
+            lastNoteNumber = -1;
         }
         else
         {
             // Slide back to the remaining held note
-            const auto& topNote = noteStack.back();
+            const auto& topNote = noteStack[(size_t) (numHeldNotes - 1)];
             targetPitchHz = midiToFreq(static_cast<float>(topNote.noteNumber));
             slideLedActive = true;
+
+            // The pitch slides back, but the panel LED must follow what is
+            // *held* now, not the note that just ended. Without this the LED
+            // stayed on the released key until a new note replaced it.
+            lastNoteNumber = topNote.noteNumber;
         }
     }
 

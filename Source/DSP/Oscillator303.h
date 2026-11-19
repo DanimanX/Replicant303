@@ -26,6 +26,14 @@ namespace Replicant303
         int getWaveformIndex() const noexcept { return waveformIndex; }
         int getMipLevel() const noexcept { return mipLevel; }
 
+        /** True while a mip change is still fading out of the previous table.
+            The panel never sees this; it exists so the regression suite can
+            prove a level change is smoothed rather than a hard jump. */
+        bool isMipCrossfading() const noexcept
+        {
+            return mipCrossfade < 1.0f && previousTable != nullptr;
+        }
+
         // Render one sample of the selected shape
         float process() noexcept;
 
@@ -48,6 +56,13 @@ namespace Replicant303
         float phase = 0.0f;
         float phaseInc = 0.0f;
 
+        /** 0..1 crossfade weight for the previous table after a mip change. */
+        float mipCrossfade = 1.0f;
+        /** Per-sample step of the crossfade: ~1 ms at the current rate. */
+        float mipCrossfadeInc = 0.0f;
+        const float* previousTable = nullptr;
+
         void updateMipLevel() noexcept;
+        float renderTable(const float* table) noexcept;
     };
 }

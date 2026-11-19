@@ -478,10 +478,25 @@ void Replicant303AudioProcessorEditor::timerCallback()
     }
 
     for (auto& key : pianoKeys)
-        key.isPressed = (key.isPressed || key.midiNote == (lastNote % 12 + 36));
+        key.isPressed = (key.midiNote == activePlayedKey);
+
+    // Sequencer telemetry lights keys through isLit, never through isPressed.
+    // The old line folded both into isPressed, which only mouse-up clears, so
+    // every sequenced note left its key lit for the rest of the session.
+    // The engine reports -1 once the last note off has landed, so the LED
+    // follows the voice instead of needing a timer of its own.
+    // lastNote maps octaves onto one 13-key board, hence the % 12 + base.
+    telemetryKeyNote = lastNote >= 0 ? (lastNote % 12 + 36) : -1;
+
+    for (auto& key : pianoKeys)
+        key.isLit = (key.midiNote == telemetryKeyNote);
 
     contentCanvas.repaint((int) Replicant303::Layout::tempoBoxX - 6, 8,
                           (int) Replicant303::Layout::tempoBoxW + 12, 40);
+
+    // Repaint the keybed too: the function LEDs and the piano key LEDs live
+    // there, and the old strip stopped at y=245 (panelHeight - 245 below), so
+    // the keys under it never re-rendered on a telemetry change.
     contentCanvas.repaint(0, 245, Replicant303::Layout::panelWidth,
                           Replicant303::Layout::panelHeight - 245);
 }
@@ -1367,7 +1382,7 @@ void Replicant303AudioProcessorEditor::drawPianoKeysAndLeds(juce::Graphics& g)
         g.setColour(theme().ledBezelDark);
         g.drawEllipse(ledRect.expanded(1.0f), 1.0f);
 
-        if (key.isPressed)
+        if (key.isPressed || key.isLit)
         {
             g.setColour(theme().ledBright.withAlpha(0.50f));
             g.fillEllipse(ledRect.expanded(5.0f));
@@ -1413,7 +1428,7 @@ void Replicant303AudioProcessorEditor::drawPianoKeysAndLeds(juce::Graphics& g)
         g.setColour(theme().ledBezelDark);
         g.drawEllipse(ledRect.expanded(1.0f), 1.0f);
 
-        if (key.isPressed)
+        if (key.isPressed || key.isLit)
         {
             g.setColour(theme().ledBright.withAlpha(0.50f));
             g.fillEllipse(ledRect.expanded(5.0f));

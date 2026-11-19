@@ -5,6 +5,9 @@ namespace Replicant303
     void Oscillator303::prepare(double newSampleRate) noexcept
     {
         sampleRate = std::max(1000.0, newSampleRate);
+        // ~1 ms ramp at this rate: long enough to hide the table swap, short
+        // enough to stay inside the slide that caused it.
+        mipCrossfadeInc = static_cast<float>(1.0 / (0.001 * sampleRate));
         bank = &WavetableBank::getInstance();
 
         setWaveform(static_cast<Waveform>(waveformIndex));
@@ -14,6 +17,8 @@ namespace Replicant303
     void Oscillator303::reset() noexcept
     {
         phase = 0.0f;
+        mipCrossfade = 1.0f;
+        previousTable = nullptr;
     }
 
     void Oscillator303::setWaveform(Waveform wave) noexcept
@@ -58,10 +63,42 @@ namespace Replicant303
             ++level;
         }
 
+        if (level == mipLevel && currentTable != nullptr)
+            return;
+
+        // Changing the table mid-note is only safe if the two tables agree at
+        // the current phase, and they do not: the band-limited versions differ.
+        // A slide crosses an octave boundary in about a millisecond, so swap in
+        // the new level and crossfade out of the old one instead of jumping.
+        if (bank != nullptr && currentTable != nullptr)
+        {
+            previousTable = currentTable;
+            mipCrossfade = 0.0f;
+        }
+
         mipLevel = level;
 
         if (bank != nullptr)
             currentTable = bank->table(waveformIndex, mipLevel);
+    }
+
+    float Oscillator303::renderTable(const float* table) noexcept
+    {
+        const float position = phase * static_cast<float>(tableSize);
+        int index0 = static_cast<int>(position);
+
+        if (index0 < 0)
+            index0 = 0;
+        else if (index0 >= tableSize)
+            index0 = tableSize - 1;
+
+        const int index1 = (index0 + 1) & (tableSize - 1);
+        const float fraction = position - static_cast<float>(index0);
+
+        const float a = table[index0];
+        const float b = table[index1];
+
+        return a + fraction * (b - a);
     }
 
     float Oscillator303::process() noexcept
@@ -74,21 +111,18 @@ namespace Replicant303
         if (currentTable == nullptr)
             return 0.0f;
 
-        // Linear interpolation between table samples.
-        const float position = phase * static_cast<float>(tableSize);
-        int index0 = static_cast<int>(position);
+        float out = renderTable(currentTable);
 
-        if (index0 < 0)
-            index0 = 0;
-        else if (index0 >= tableSize)
-            index0 = tableSize - 1;
+        if (mipCrossfade < 1.0f && previousTable != nullptr)
+        {
+            const float old = renderTable(previousTable);
+            mipCrossfade = std::min(1.0f, mipCrossfade + mipCrossfadeInc);
+            out = old + (out - old) * mipCrossfade;
 
-        const int index1 = (index0 + 1) & (tableSize - 1);
-        const float fraction = position - static_cast<float>(index0);
+            if (mipCrossfade >= 1.0f)
+                previousTable = nullptr;
+        }
 
-        const float a = currentTable[index0];
-        const float b = currentTable[index1];
-
-        return a + fraction * (b - a);
+        return out;
     }
 }

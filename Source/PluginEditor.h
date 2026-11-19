@@ -39,6 +39,15 @@ public:
     /** Selects a shape by bank index (clamped) and updates the parameter. */
     void selectWaveformIndex(int index);
 
+    /** Note number of the piano key the sequencer last triggered (C2..C3
+        range), or -1 when no key is lit by telemetry. Read literally, so a
+        stale lit key is observable in the regression suite. */
+    int getTelemetryKeyNote() const noexcept { return telemetryKeyNote; }
+
+    /** Advances the editor's 30 Hz telemetry tick once. Used by the
+        regression suite so LED state is observable without a running timer. */
+    void tickForTest() { timerCallback(); }
+
 private:
     class PanelCanvas : public juce::Component
     {
@@ -163,12 +172,17 @@ private:
         bool isBlack;
         juce::Rectangle<float> bounds;
         juce::Point<float> ledPos;
+        /** Held down by the user (mouse). Only mouse handlers may set this. */
         bool isPressed = false;
+        /** Lit by the sequencer telemetry. Owned by timerCallback alone, so a
+            played note never leaves a key looking held down. */
+        bool isLit = false;
         juce::String subLabel = "";
         juce::String stepLabel = "";
     };
     std::vector<PianoKey> pianoKeys;
     int activePlayedKey = -1;
+    int telemetryKeyNote = -1;
 
     struct FunctionButton
     {
