@@ -146,3 +146,4 @@ r303_add_tool(generate_presets tools/generate_presets.cpp)
 # runs the same fingerprint checks CI would.
 enable_testing()
 add_test(NAME dsp_fingerprint COMMAND run_tests)
+set_tests_properties(dsp_fingerprint PROPERTIES LABELS "dsp")

@@ -77,6 +77,21 @@ jobs:
             xvfb
 
       # ------------------------------------------------------------------------
+      # JUCE source cache
+      #
+      # FetchContent clones JUCE 8.0.4 on every job. The tag is pinned in
+      # CMakeLists.txt, so the checkout is immutable and safe to reuse across
+      # runs. Keyed per OS so the three jobs never fight over one entry.
+      # ------------------------------------------------------------------------
+      - name: Cache JUCE source
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/juce-src
+          key: juce-8.0.4-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: |
+            juce-8.0.4-${{ runner.os }}-
+
+      # ------------------------------------------------------------------------
       # Configure CMake
       # ------------------------------------------------------------------------
       - name: Configure CMake
