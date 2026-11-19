@@ -176,14 +176,18 @@ jobs:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
+    # Releases are cut deliberately, by pushing a version tag, and only then.
+    # This used to fire on every push to main, which published a new version
+    # for every routine commit and left it unannounced (the X job only runs for
+    # tags). Pushing 'v*' is the single act that publishes and announces.
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     # Exported so the notify job can announce without re-deriving the version.
     outputs:
       tag: ${{ steps.versioning.outputs.tag }}
-    # Serialise release runs for the same ref. Two pushes landing close together
-    # otherwise compute the same next version concurrently and race for one tag.
+    # Serialise release runs for the same tag, so a re-run and a fresh push of
+    # the same version cannot both write the release's assets at once.
     concurrency:
       group: release-${{ github.ref }}
       cancel-in-progress: false
@@ -198,43 +202,30 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            # Tag push: the version was chosen deliberately, use it as-is.
-            RELEASE_TAG="${GITHUB_REF_NAME}"
-            echo "Triggered by tag push -> releasing ${RELEASE_TAG}"
+          # The job only runs for refs/tags/v*, so the tag is the version. It
+          # is never computed here: guessing the next number is what used to
+          # publish one release per commit on main.
+          RELEASE_TAG="${GITHUB_REF_NAME}"
+
+          if ! [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '${RELEASE_TAG}' is not a vMAJOR.MINOR.PATCH version. Refusing to publish."
+            exit 1
+          fi
+
+          # A tag that already has a published release is a republish request
+          # (a re-run, or recovering a run that failed after the release step).
+          # Reusing the same tag is correct here; creating a new version is not.
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists; refreshing its assets."
           else
-            git fetch --tags --force
-
-            # Highest existing version tag, compared as a version.
-            #
-            # Do NOT use `git describe --tags --abbrev=0` here. When several tags
-            # point at the same commit it breaks the tie by repository order, not
-            # by version. With v1.0.4 and v1.0.5 both on one commit it returns
-            # v1.0.4, so the next version was computed as v1.0.5 again and
-            # softprops/action-gh-release silently rewrote that already published
-            # release instead of creating a new one.
-            LATEST_TAG=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
-            LATEST_TAG=${LATEST_TAG:-v1.0.0}
-            echo "Highest existing version tag: ${LATEST_TAG}"
-
-            VERSION="${LATEST_TAG#v}"
-            IFS='.' read -r MAJOR MINOR PATCH <<< "${VERSION}"
-            # 10# forces decimal: a tag like v1.0.08 would otherwise be read as an
-            # invalid octal literal by bash arithmetic and abort the step.
-            RELEASE_TAG="v${MAJOR}.${MINOR}.$((10#${PATCH} + 1))"
-
-            # Guard: never write over a release that already exists. Without this
-            # the job used to exit 0 while quietly replacing the assets of an
-            # older, already published release.
-            if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
-              echo "::error::Tag ${RELEASE_TAG} already exists. Refusing to overwrite the published release for it. Bump the version deliberately or delete the stale tag."
-              exit 1
-            fi
+            echo "Publishing ${RELEASE_TAG}"
           fi
 
           echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
           echo "RELEASE_TAG=${RELEASE_TAG}" >> "${GITHUB_ENV}"
           echo "Release tag will be: ${RELEASE_TAG}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download all Build Artifacts
         uses: actions/download-artifact@v4
@@ -363,8 +354,8 @@ jobs:
   # Announce Job: post the release to X.
   #
   # Only runs for a real version tag (refs/tags/v*) whose release succeeded.
-  # Pushes to main also publish a release, but those are routine commits; this
-  # job deliberately does not announce them.
+  # Pushes to main no longer publish a release at all, so the tag that publishes
+  # is always the same tag that announces: one act, one version, one post.
   #
   # X's v2 write endpoint rejects OAuth 2.0 app-only tokens, so the post is
   # signed with OAuth 1.0a inside tools/post_release_tweet.py. The four
