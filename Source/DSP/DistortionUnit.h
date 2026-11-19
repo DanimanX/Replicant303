@@ -31,6 +31,10 @@ namespace Replicant303
         float tone = 0.5f;
         float mix = 1.0f; // Wet / Dry balance
 
+        // Set while mix <= 0, so the idle path clears the filter states once
+        // instead of on every sample.
+        bool mixIdle = false;
+
         // Internal filter states for tone sculpting:
         // Pre-emphasis highpass & Mid-hump filter
         float preHpState = 0.0f;

@@ -25,6 +25,7 @@ namespace Replicant303
         preHpState = 0.0f;
         postLpState = 0.0f;
         slewState = 0.0f;
+        mixIdle = false;
     }
 
     void DistortionUnit::setDrive(float drive01) noexcept
@@ -135,14 +136,19 @@ namespace Replicant303
             return input;
 
         // mix == 0 is mathematically a pure pass-through ((1-0)*in + 0*wet),
-        // so skip the saturation chain entirely. States are zeroed so the
-        // unit starts cold when the mix climbs back up — its contribution
-        // is scaled by that ramping mix, so there is no click.
+        // so skip the saturation chain entirely. States are cleared once on
+        // the way into the idle state, not every sample; the blend ramps back
+        // up with mix, so there is no click.
         if (mix <= 0.0f)
         {
-            reset();
+            if (!mixIdle)
+            {
+                reset();
+                mixIdle = true;
+            }
             return input;
         }
+        mixIdle = false;
 
         float wet = 0.0f;
         switch (currentType)
