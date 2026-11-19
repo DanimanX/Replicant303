@@ -873,6 +873,34 @@ namespace
         check (editor->getWidth() == 1080 && editor->getHeight() == 590,
                "returning to 100% zoom restores 1080x590 px");
 
+        // Piano key LEDs are driven by two independent sources: the user's
+        // finger (isPressed) and the sequencer telemetry (isLit). They used to
+        // share one flag that only mouse-up cleared, and the engine kept
+        // reporting the last note after it stopped, so every sequenced note
+        // left its key lit for the rest of the session. Silence must light
+        // nothing.
+        processor.getSequencer().stop();
+        for (int i = 0; i < 40; ++i)
+            concrete->tickForTest();
+
+        check (concrete->getTelemetryKeyNote() == -1,
+               "a stopped sequencer lights no piano key");
+
+        // The engine owns the -1: a note that was played and released must
+        // clear the telemetry note rather than leave the old one standing.
+        auto& engine = processor.getSynthEngine();
+        juce::AudioBuffer<float> block (2, 64);
+        juce::MidiBuffer on;
+        on.addEvent (juce::MidiMessage::noteOn (1, 40, (juce::uint8) 90), 0);
+        engine.processBlock (block, on);
+        check (engine.getLastMidiNote() == 40, "a note-on reports its own note");
+
+        juce::MidiBuffer off;
+        off.addEvent (juce::MidiMessage::noteOff (1, 40), 0);
+        engine.processBlock (block, off);
+        check (engine.getLastMidiNote() == -1,
+               "a released note clears the telemetry note");
+
         // Waveform bank dropdown: opening it must not move the window, and a
         // selection must reach the parameter the audio thread reads.
         concrete->setWaveformMenuOpen (true);
@@ -1342,6 +1370,159 @@ namespace
 //==============================================================================
 namespace
 {
+    /**************************************************************************
+     Robustness: the note stack must stay bounded without allocating, and the
+     import guards must reject hostile input before it reaches a parser.
+    **************************************************************************/
+    void testRobustness()
+    {
+        section ("Robustness");
+
+        auto& presetIO = Replicant303::PresetIO::maxPresetFileBytes;
+        juce::ignoreUnused (presetIO);
+
+        // 1. A stack deeper than the old 8-note reserve must still track every
+        //    voice and return to silence when all of them are released.
+        {
+            Replicant303::SynthEngine engine;
+            engine.prepare (48000.0);
+
+            juce::AudioBuffer<float> block (2, 32);
+
+            for (int n = 0; n < 40; ++n)
+            {
+                juce::MidiBuffer on;
+                on.addEvent (juce::MidiMessage::noteOn (1, 36 + (n % 24), (juce::uint8) 80), 0);
+                engine.processBlock (block, on);
+            }
+
+            for (int n = 39; n >= 0; --n)
+            {
+                juce::MidiBuffer off;
+                off.addEvent (juce::MidiMessage::noteOff (1, 36 + (n % 24)), 0);
+                engine.processBlock (block, off);
+            }
+
+            check (engine.getLastMidiNote() == -1,
+                   "a stack deeper than the old reserve returns to silence");
+
+            // Legato: the last released note must hand the pitch back to the
+            // one still held, not to the one that was just released.
+            engine.reset();
+
+            juce::MidiBuffer two;
+            two.addEvent (juce::MidiMessage::noteOn (1, 40, (juce::uint8) 80), 0);
+            two.addEvent (juce::MidiMessage::noteOn (1, 47, (juce::uint8) 80), 1);
+            engine.processBlock (block, two);
+
+            juce::MidiBuffer dropTop;
+            dropTop.addEvent (juce::MidiMessage::noteOff (1, 47), 0);
+            engine.processBlock (block, dropTop);
+
+            {
+                auto msg = juce::String ("releasing the top note hands back to the held note [last=")
+                           + juce::String (engine.getLastMidiNote()) + "]";
+                check (engine.getLastMidiNote() == 40, msg);
+            }
+
+            juce::MidiBuffer dropLast;
+            dropLast.addEvent (juce::MidiMessage::noteOff (1, 40), 0);
+            engine.processBlock (block, dropLast);
+
+            check (engine.getLastMidiNote() == -1,
+                   "releasing every held note silences the telemetry");
+        }
+
+        // 1b. Crossing a mip boundary while a note is sounding must fade into
+        //     the new table, not swap it under the phase. Two octaves up from
+        //     110 Hz moves the note from a low mip to a higher one.
+        {
+            Replicant303::Oscillator303 osc;
+            osc.prepare (48000.0);
+            osc.setWaveform ((Replicant303::Waveform) 0);
+            osc.setFrequency (110.0f);
+            osc.setTuningSemi (0.0f);
+            osc.reset();
+
+            for (int i = 0; i < 64; ++i)
+                osc.process();
+
+            const int before = osc.getMipLevel();
+            osc.setFrequency (440.0f);
+            const int after = osc.getMipLevel();
+
+            check (after != before,
+                   "a two-octave jump moves the oscillator to another mip level");
+            check (osc.isMipCrossfading(),
+                   "a mip change mid-note crossfades instead of jumping");
+
+            // And the fade must end, so the extra table read is temporary.
+            for (int i = 0; i < 480; ++i)
+                osc.process();
+
+            check (! osc.isMipCrossfading(),
+                   "the mip crossfade completes within a few milliseconds");
+        }
+
+        // 2. Import must refuse an oversized file instead of parsing it.
+        //    The file is built as a *valid* MIDI pattern and then padded past
+        //    the bound, so the only thing that can reject it is the size guard.
+        {
+            auto base = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                            .getNonexistentChildFile ("r303_size_base", ".mid", false);
+
+            {
+                Replicant303::Preset small;
+                small.pattern.length = 4;
+                check (Replicant303::PresetIO::writeMidiFile (small, base),
+                       "a small preset is written for the size test");
+            }
+
+            auto padded = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getNonexistentChildFile ("r303_size_padded", ".mid", false);
+            check (base.copyFileTo (padded), "preset copied for padding");
+
+            {
+                juce::FileOutputStream stream (padded);
+                check (stream.openedOk(), "padded file opened");
+
+                if (stream.openedOk())
+                {
+                    stream.setPosition ((juce::int64) Replicant303::PresetIO::maxPresetFileBytes + 1);
+                    stream.writeByte (0);
+                    stream.flush();
+                }
+            }
+
+            // Control: the same bytes under the limit must import fine.
+            Replicant303::Preset underLimit;
+            check (Replicant303::PresetIO::readMidiFile (base, underLimit),
+                   "a preset inside the size bound imports");
+
+            // A guard-only refusal: same file, same validity, larger than the
+            // bound. Without the guard this parse succeeds.
+            Replicant303::Preset oversized;
+            check (! Replicant303::PresetIO::readMidiFile (padded, oversized),
+                   "import refuses a valid preset past the size bound");
+
+            base.deleteFile();
+            padded.deleteFile();
+        }
+
+        // 3. Inside the bound but not MIDI at all: fail cleanly, do not throw.
+        {
+            auto junk = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                            .getNonexistentChildFile ("r303_junk", ".mid", false);
+            junk.replaceWithText ("this is not a midi file, it is a sentence");
+
+            Replicant303::Preset preset;
+            check (! Replicant303::PresetIO::readMidiFile (junk, preset),
+                   "import rejects a non-MIDI file inside the size bound");
+
+            junk.deleteFile();
+        }
+    }
+
     void testDspFingerprints()
     {
         section ("DSP fingerprints");
@@ -1544,6 +1725,7 @@ int main()
     testProcessor();
     testWaveformBank();
     testDspFingerprints();
+    testRobustness();
     testEditorDrawer();
 
     std::cout << "\n----------------------------------------" << std::endl;

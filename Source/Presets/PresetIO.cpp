@@ -243,6 +243,12 @@ namespace Replicant303::PresetIO
 
     bool readMidiFile (const juce::File& file, Preset& preset)
     {
+        // MidiFile::readFrom loads the whole file into memory. A preset is a
+        // 16-step pattern plus one metadata event, so anything past this bound
+        // is not a preset and should not be parsed at all.
+        if (file.getSize() > (juce::int64) maxPresetFileBytes)
+            return false;
+
         juce::FileInputStream input (file);
 
         if (! input.openedOk())
