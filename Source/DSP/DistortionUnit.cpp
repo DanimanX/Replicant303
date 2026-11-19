@@ -134,6 +134,16 @@ namespace Replicant303
         if (!active)
             return input;
 
+        // mix == 0 is mathematically a pure pass-through ((1-0)*in + 0*wet),
+        // so skip the saturation chain entirely. States are zeroed so the
+        // unit starts cold when the mix climbs back up — its contribution
+        // is scaled by that ramping mix, so there is no click.
+        if (mix <= 0.0f)
+        {
+            reset();
+            return input;
+        }
+
         float wet = 0.0f;
         switch (currentType)
         {

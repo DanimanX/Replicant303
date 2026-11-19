@@ -1,4 +1,5 @@
 #include "SynthEngine.h"
+#include <bit>
 
 namespace Replicant303
 {
@@ -32,6 +33,8 @@ namespace Replicant303
         targetPitchHz = 110.0f;
         currentPitchHz = 110.0f;
         pitchBendSemi = 0.0f;
+        pitchBendFactor = 1.0f;
+        lastSetPitchHz = -1.0f;
 
         slideLedActive = false;
         accentLedActive = false;
@@ -100,6 +103,8 @@ namespace Replicant303
     {
         // 0 to 16383, center is 8192. Range: +/- 2 semitones
         pitchBendSemi = (static_cast<float>(wheelValue - 8192) / 8192.0f) * 2.0f;
+        // Cache the exponential here so renderSamples only multiplies.
+        pitchBendFactor = std::pow(2.0f, pitchBendSemi / 12.0f);
     }
 
     void SynthEngine::handleMidiMessage(const juce::MidiMessage& msg) noexcept
@@ -161,8 +166,8 @@ namespace Replicant303
     {
         const int numChannels = buffer.getNumChannels();
 
-        // Pitch multiplier for pitch bend
-        const float bendFactor = std::pow(2.0f, pitchBendSemi / 12.0f);
+        // Pitch multiplier for pitch bend (cached by handlePitchWheel)
+        const float bendFactor = pitchBendFactor;
 
         for (int i = startSample; i < startSample + numSamples; ++i)
         {
@@ -170,8 +175,17 @@ namespace Replicant303
             float effectiveTarget = targetPitchHz * bendFactor;
             currentPitchHz += (effectiveTarget - currentPitchHz) * pitchSlideCoeff;
 
-            // 2. Generate raw 303 oscillator sample
-            osc.setFrequency(currentPitchHz);
+            // 2. Generate raw 303 oscillator sample. setFrequency is a pure
+            // function of (pitch, tuning, sampleRate), so re-running it with
+            // an unchanged pitch — e.g. during rests — would change nothing.
+            // Compared bitwise to honour -Wfloat-equal: identical bits imply
+            // an identical phaseInc, which is the redundancy being skipped.
+            if (std::bit_cast<std::int32_t>(currentPitchHz)
+                != std::bit_cast<std::int32_t>(lastSetPitchHz))
+            {
+                osc.setFrequency(currentPitchHz);
+                lastSetPitchHz = currentPitchHz;
+            }
             float rawOsc = osc.process();
 
             // 3. Compute envelopes (VCF, VCA, Accent)

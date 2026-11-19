@@ -40,11 +40,15 @@ namespace Replicant303
         // 1. Calculate modulated cutoff frequency
         // 303 Envelope Mod can sweep up to ~5 octaves, and accent adds extra ~2 octaves squelch
         float octavesMod = (envMod01 * envVal * 5.2f) + (accentVal * 2.2f);
-        float modCutoff = baseCutoffHz * std::pow(2.0f, octavesMod);
+        // exp2f: same function as pow(2.0f, x) but a single instruction
+        // chain instead of a generic transcendental, on the per-sample path.
+        float modCutoff = baseCutoffHz * std::exp2(octavesMod);
         float maxFreq = static_cast<float>(sampleRate * 0.42);
         modCutoff = std::clamp(modCutoff, 25.0f, maxFreq);
 
         // Normalized digital frequency coefficient: g = tan(pi * fc / fs)
+        // (kept as the original pre-warp chain: it evaluates exactly one
+        // tanf either way, and the algebraic shortcut drifted ~1.3 ulp)
         float wd = 2.0f * 3.14159265f * modCutoff;
         float t = 1.0f / static_cast<float>(sampleRate);
         float wa = (2.0f / t) * std::tan(wd * t * 0.5f);

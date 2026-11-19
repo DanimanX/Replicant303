@@ -42,6 +42,8 @@ namespace Replicant303
         float targetFreq = 110.0f;
         float actualFreq = 110.0f;
         float tuningSemi = 0.0f;
+        float tuningFactor = 1.0f; // pow(2, semi/12), cached so the audio
+                                   // callback never runs a transcendental
 
         float phase = 0.0f;
         float phaseInc = 0.0f;

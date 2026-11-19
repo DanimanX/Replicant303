@@ -1332,6 +1332,187 @@ namespace
 }
 
 //==============================================================================
+//  DSP output fingerprints
+//
+//  Checksums of fixed-patch oscillator and engine renders. The oscillator
+//  fingerprint must stay bit-exact; the engine one runs through the
+//  non-linear filter so it carries a small tolerance. They are tripwires
+//  against accidental regressions when the audio hot path is refactored:
+//  an intentional sound change has to update these numbers on purpose.
+//==============================================================================
+namespace
+{
+    void testDspFingerprints()
+    {
+        section ("DSP fingerprints");
+
+        using namespace Replicant303;
+
+        // 1. Raw oscillator: saw, 440 Hz, +3.5 semitones tuning, 48 kHz.
+        Oscillator303 osc;
+        osc.prepare (48000.0);
+        osc.setWaveform (Waveform::Sawtooth);
+        osc.setTuningSemi (3.5f);
+        osc.setFrequency (440.0f);
+        osc.reset();
+
+        double oscSum = 0.0, oscAbsSum = 0.0;
+
+        for (int i = 0; i < 4096; ++i)
+        {
+            const float v = osc.process();
+            oscSum    += (double) v;
+            oscAbsSum += std::abs ((double) v);
+        }
+
+        const juce::int64 oscSumQ    = (juce::int64) llround (oscSum * 1.0e6);
+        const juce::int64 oscAbsSumQ = (juce::int64) llround (oscAbsSum * 1.0e6);
+
+        std::cout << "    [capture] oscSumQ=" << oscSumQ
+                  << " oscAbsSumQ=" << oscAbsSumQ << std::endl;
+
+        check (oscSumQ == -1766242 && oscAbsSumQ == 1602279420,
+               "raw oscillator output is bit-identical to the captured fingerprint");
+
+        // Tuning semitones must still reach the phase accumulator after the
+        // tuning factor is cached: +12 semitones doubles the crossings.
+        osc.setTuningSemi (0.0f);
+        osc.setFrequency (220.0f);
+        osc.reset();
+
+        int crossings = 0;
+        float previous = 0.0f;
+
+        for (int i = 0; i < 48000; ++i)
+        {
+            const float v = osc.process();
+            if (i > 0 && previous < 0.0f && v >= 0.0f)
+                ++crossings;
+            previous = v;
+        }
+
+        osc.setTuningSemi (12.0f);
+        osc.reset();
+
+        int tunedCrossings = 0;
+        previous = 0.0f;
+
+        for (int i = 0; i < 48000; ++i)
+        {
+            const float v = osc.process();
+            if (i > 0 && previous < 0.0f && v >= 0.0f)
+                ++tunedCrossings;
+            previous = v;
+        }
+
+        check (std::abs (tunedCrossings - 2 * crossings) <= 4,
+               "cached tuning factor still shifts the pitch an octave");
+
+        // 2. Full engine chain: square, resonant ladder, accent on, Poco Rat.
+        SynthEngine engine;
+        engine.prepare (48000.0);
+        engine.setWaveform (Waveform::Square);
+        engine.setDecay (0.8f);
+        engine.setAccent (0.7f);
+        engine.setCutoff (600.0f);
+        engine.setResonance (0.6f);
+        engine.setEnvMod (0.7f);
+        engine.setDistortionType (DistortionType::PocoRat);
+        engine.setDistortionDrive (0.65f);
+        engine.setDistortionTone (0.6f);
+        engine.setDistortionMix (0.85f);
+        engine.setMasterVolume (0.5f);
+
+        double engineSum = 0.0, enginePeak = 0.0;
+        juce::AudioBuffer<float> block (2, 128);
+
+        for (int s = 0; s < 48000; s += 128)
+        {
+            juce::MidiBuffer midi;
+
+            if (s == 0)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 48, (juce::uint8) 118), 0);
+            if (s == 19200)
+                midi.addEvent (juce::MidiMessage::noteOff (1, 48), 0);
+
+            block.clear();
+            engine.processBlock (block, midi);
+
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block.getNumSamples(); ++i)
+                {
+                    engineSum += (double) block.getSample (ch, i);
+                    enginePeak = juce::jmax (enginePeak, (double) std::abs (block.getSample (ch, i)));
+                }
+        }
+
+        const juce::int64 engineSumQ  = (juce::int64) llround (engineSum * 1.0e4);
+        const juce::int64 enginePeakQ = (juce::int64) llround (enginePeak * 1.0e6);
+
+        std::cout << "    [capture] engineSumQ=" << engineSumQ
+                  << " enginePeakQ=" << enginePeakQ << std::endl;
+
+        check (engineSumQ == -22789 && enginePeakQ == 502584,
+               "full engine chain matches the captured fingerprint");
+        check (enginePeak > 0.1 && enginePeak <= 1.0, "engine render stays audible and bounded");
+
+        // A distortion at zero mix must behave exactly like a bypassed
+        // distortion: same upstream chain, sample-identical output.
+        SynthEngine withZeroMix, withoutDist;
+
+        auto patchForMixTest = [] (SynthEngine& e)
+        {
+            e.prepare (48000.0);
+            e.setWaveform (Waveform::Sawtooth);
+            e.setCutoff (1200.0f);
+            e.setResonance (0.7f);
+            e.setEnvMod (0.5f);
+            e.setDistortionType (DistortionType::Wavefolder);
+            e.setDistortionDrive (0.75f);
+            e.setDistortionTone (0.5f);
+            e.setMasterVolume (0.6f);
+        };
+
+        patchForMixTest (withZeroMix);
+        withZeroMix.setDistortionActive (true);
+        withZeroMix.setDistortionMix (0.0f);
+
+        patchForMixTest (withoutDist);
+        withoutDist.setDistortionActive (false);
+
+        bool sameAsBypass = true;
+        bool finite = true;
+
+        for (int s = 0; s < 2560; s += 128)
+        {
+            juce::MidiBuffer midi;
+
+            if (s == 0)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 36, (juce::uint8) 90), 0);
+            if (s == 1280)
+                midi.addEvent (juce::MidiMessage::noteOff (1, 36), 0);
+
+            juce::AudioBuffer<float> bufA (1, 128), bufB (1, 128);
+            bufA.clear();
+            bufB.clear();
+            withZeroMix.processBlock (bufA, midi);
+            withoutDist.processBlock (bufB, midi);
+
+            for (int i = 0; i < 128; ++i)
+            {
+                const float a = bufA.getSample (0, i);
+                const float b = bufB.getSample (0, i);
+                sameAsBypass = sameAsBypass && (a == b);
+                finite = finite && std::isfinite (a);
+            }
+        }
+
+        check (sameAsBypass, "a zero distortion mix is sample-identical to bypass");
+        check (finite, "engine renders finitely with distortion mix at zero");
+    }
+}
+
+//==============================================================================
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -1348,6 +1529,7 @@ int main()
     testEngineEdges();
     testProcessor();
     testWaveformBank();
+    testDspFingerprints();
     testEditorDrawer();
 
     std::cout << "\n----------------------------------------" << std::endl;

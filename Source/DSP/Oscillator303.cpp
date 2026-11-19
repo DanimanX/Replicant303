@@ -27,7 +27,9 @@ namespace Replicant303
     void Oscillator303::setFrequency(float freqHz) noexcept
     {
         targetFreq = freqHz;
-        const float tunedFreq = targetFreq * std::pow(2.0f, tuningSemi / 12.0f);
+        // Tuning uses the factor cached by setTuningSemi: automation would
+        // otherwise drag a powf() into every sample of the audio callback.
+        const float tunedFreq = targetFreq * tuningFactor;
         actualFreq = std::clamp(tunedFreq, 10.0f, static_cast<float>(sampleRate * 0.45));
         phaseInc = actualFreq / static_cast<float>(sampleRate);
 
@@ -37,6 +39,7 @@ namespace Replicant303
     void Oscillator303::setTuningSemi(float semi) noexcept
     {
         tuningSemi = semi;
+        tuningFactor = std::pow (2.0f, semi / 12.0f);
         setFrequency(targetFreq);
     }
 

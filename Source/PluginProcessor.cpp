@@ -154,6 +154,31 @@ void Replicant303AudioProcessor::prepareToPlay(double sampleRate, int /*samplesP
     // every 48/96 kHz session.
     sequencer.prepare(sampleRate);
 
+    // First-run warm-up: the wavetable pages, the filter's tan()/clamps and
+    // the distortion LUT live in lazily touched pages and cold branch
+    // predictors that would otherwise fault inside the first audio
+    // callbacks. A throwaway silent render moves that cost to load time,
+    // where it cannot glitch a take. Everything the render touches is
+    // re-pushed from APVTS by updateParameters() on the first real block,
+    // and the engine is reset right after, so no state leaks out.
+    {
+        synthEngine.setDistortionActive(true);
+        synthEngine.setDistortionMix(0.5f);
+        const int total = static_cast<int>(sampleRate);   // one second
+        for (int pos = 0; pos < total; pos += 128)
+        {
+            juce::MidiBuffer midi;
+            if (pos == 0)
+                midi.addEvent(juce::MidiMessage::noteOn(1, 33, static_cast<juce::uint8>(90)), 0);
+            if (pos == total / 4)
+                midi.addEvent(juce::MidiMessage::noteOff(1, 33), 0);
+            juce::AudioBuffer<float> scratch(2, 128);
+            scratch.clear();
+            synthEngine.processBlock(scratch, midi);
+        }
+        synthEngine.reset();
+    }
+
     hasSyncedInitialHostTempo = false;
     syncHostPlayHead();
 }

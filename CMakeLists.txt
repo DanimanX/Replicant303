@@ -141,3 +141,8 @@ r303_add_tool(render_audio_demo tools/render_audio_demo.cpp)
 # Writes the factory preset examples (and optionally the full 8 x 64 bank) as
 # .midi files. It is the checked-in source of truth for presets/.
 r303_add_tool(generate_presets tools/generate_presets.cpp)
+
+# Wire the regression suite into CTest so `ctest --test-dir build`
+# runs the same fingerprint checks CI would.
+enable_testing()
+add_test(NAME dsp_fingerprint COMMAND run_tests)

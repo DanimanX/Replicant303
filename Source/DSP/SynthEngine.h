@@ -74,6 +74,8 @@ namespace Replicant303
         float currentPitchHz = 110.0f;
         float pitchSlideCoeff = 0.999f;
         float pitchBendSemi = 0.0f;
+        float pitchBendFactor = 1.0f;   // pow(2, bend/12), cached on wheel moves
+        float lastSetPitchHz = -1.0f;   // gates redundant per-sample retuning
 
         // Telemetry for LED display
         bool slideLedActive = false;
