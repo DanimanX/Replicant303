@@ -164,6 +164,9 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
+    # Exported so the notify job can announce without re-deriving the version.
+    outputs:
+      tag: ${{ steps.versioning.outputs.tag }}
     # Serialise release runs for the same ref. Two pushes landing close together
     # otherwise compute the same next version concurrently and race for one tag.
     concurrency:
@@ -262,3 +265,159 @@ jobs:
           files: release-assets/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ----------------------------------------------------------------------------
+  # Notify Job: the release itself is the notification channel.
+  #
+  # A green build that published a release is announced three ways, none of
+  # which needs a credential beyond GITHUB_TOKEN:
+  #   * a run summary, so the green run says what shipped instead of leaving
+  #     you to open the release to find out,
+  #   * the release's own atom feed (/releases.atom) for feed readers,
+  #   * GitHub's native "Releases only" watch setting for email.
+  #
+  # It runs only when `release` succeeded, so a failed build never announces.
+  # ----------------------------------------------------------------------------
+  notify:
+    name: Announce Release
+    needs: [ build, release ]
+    runs-on: ubuntu-latest
+    if: needs.release.result == 'success'
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Write the release summary
+        id: summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${TAG:-}" ]]; then
+            echo "::warning::release job produced no tag output; announcing the latest release instead"
+            # `|| true` keeps a failed lookup from aborting under set -e and
+            # silently leaving TAG empty.
+            TAG="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName || true)"
+          fi
+
+          if [[ -z "$TAG" ]]; then
+            echo "::error::Could not determine the released tag."
+            exit 1
+          fi
+
+          echo "Publishing Replicant303 ${TAG}"
+
+          {
+            echo "## 🟢 Replicant303 ${TAG} published"
+            echo
+            echo "All three platforms built and the release is live."
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Tag | \`${TAG}\` |"
+            echo "| Release | https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG} |"
+            echo "| Commit | \`${GITHUB_SHA:0:7}\` |"
+            echo "| Feed | https://github.com/${GITHUB_REPOSITORY}/releases.atom |"
+            echo
+            echo "### Assets"
+            echo
+            gh release view "${TAG}" --repo "$GITHUB_REPOSITORY" \
+              --json assets -q '.assets[] | "- `\(.name)` — \(.size / 1048576 | floor) MB"'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Surface the tag to any later job without re-deriving it.
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Fail loudly if the release has no binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.summary.outputs.tag }}
+        run: |
+          set -euo pipefail
+          count=$(gh release view "${TAG}" --repo "$GITHUB_REPOSITORY" \
+                    --json assets -q '[.assets[] | select(.name | endswith(".zip"))] | length')
+          echo "Found ${count} zip asset(s) on ${TAG}"
+          if [[ "${count}" -lt 3 ]]; then
+            echo "::error::Expected 3 platform zips on ${TAG}, found ${count}. The release is incomplete."
+            exit 1
+          fi
+
+  # ----------------------------------------------------------------------------
+  # Announce Job: post the release to X.
+  #
+  # Only runs for a real version tag (refs/tags/v*) whose release succeeded.
+  # Pushes to main also publish a release, but those are routine commits; this
+  # job deliberately does not announce them.
+  #
+  # X's v2 write endpoint rejects OAuth 2.0 app-only tokens, so the post is
+  # signed with OAuth 1.0a inside tools/post_release_tweet.py. The four
+  # credentials live in repository secrets and are never written to a file.
+  # ----------------------------------------------------------------------------
+  announce:
+    name: Announce on X
+    needs: [ release ]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      needs.release.result == 'success' &&
+      startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Missing secrets would otherwise fail the post with a confusing 401.
+      - name: Check the X credentials are configured
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+        run: |
+          set -euo pipefail
+          missing=""
+          for name in X_API_KEY X_API_SECRET X_ACCESS_TOKEN X_ACCESS_SECRET; do
+            [[ -n "${!name:-}" ]] || missing="${missing} ${name}"
+          done
+          if [[ -n "$missing" ]]; then
+            echo "::error::Missing repository secret(s):${missing}. Add them in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "All four X credentials are present."
+
+      - name: Post the release announcement
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          TAG="${TAG:-${GITHUB_REF_NAME}}"
+          REPO_URL="https://github.com/${GITHUB_REPOSITORY}"
+
+          # Built with printf so no heredoc indentation leaks into the post.
+          # X counts any link as 23 chars, so the text is budgeted against 280
+          # minus that; this body comes to ~185.
+          TEXT=$(printf '%s\n%s' \
+            "Replicant303 ${TAG} is out - free TB-303 emulation: 4-pole diode ladder, 5 distortion models, 512-preset vault. VST3/AU/Standalone for macOS, Windows and Linux." \
+            "${REPO_URL}/releases/tag/${TAG}")
+
+          python3 tools/post_release_tweet.py "$TEXT"
+
+      - name: Summarise the announcement
+        if: always()
+        env:
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          {
+            echo "### Announcement"
+            echo
+            echo "- Tag: \`${TAG:-${GITHUB_REF_NAME}}\`"
+            echo "- Result: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
