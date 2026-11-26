@@ -24,10 +24,19 @@ jobs:
             cmake_generator: "Xcode"
             artifact_name: "Replicant303-macOS-Universal"
 
+          # Both Linux jobs use the 22.04 image so the two artifacts share one
+          # glibc baseline (2.35). The arm64 runner is GitHub's native arm
+          # hardware, so arm64 is compiled and tested natively, never
+          # cross-compiled.
           - os: ubuntu-22.04
             platform: linux
             cmake_generator: "Unix Makefiles"
             artifact_name: "Replicant303-Linux-x86_64"
+
+          - os: ubuntu-22.04-arm
+            platform: linux-arm64
+            cmake_generator: "Unix Makefiles"
+            artifact_name: "Replicant303-Linux-arm64"
 
           - os: windows-latest
             platform: windows
@@ -81,15 +90,16 @@ jobs:
       #
       # FetchContent clones JUCE 8.0.4 on every job. The tag is pinned in
       # CMakeLists.txt, so the checkout is immutable and safe to reuse across
-      # runs. Keyed per OS so the three jobs never fight over one entry.
+      # runs. Keyed per OS and architecture, so no job ever restores another
+      # platform's (or another arch's) checkout.
       # ------------------------------------------------------------------------
       - name: Cache JUCE source
         uses: actions/cache@v4
         with:
           path: build/_deps/juce-src
-          key: juce-8.0.4-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+          key: juce-8.0.4-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('CMakeLists.txt') }}
           restore-keys: |
-            juce-8.0.4-${{ runner.os }}-
+            juce-8.0.4-${{ runner.os }}-${{ runner.arch }}-
 
       # ------------------------------------------------------------------------
       # Configure CMake
@@ -110,7 +120,10 @@ jobs:
           cmake --build build --config Release --parallel
 
       # ------------------------------------------------------------------------
-      # Headless Regression Suite (Linux)
+      # Headless Regression Suite (Linux x86_64 and Linux arm64)
+      #
+      # Runs on both Linux jobs, so the aarch64 build is proven by the suite
+      # rather than shipped on the strength of compiling alone.
       # ------------------------------------------------------------------------
       - name: Run Regression Suite
         if: runner.os == 'Linux'
@@ -149,8 +162,8 @@ jobs:
           find build -type d -name "Replicant303.app" -exec cp -R {} package-staging/ \; || true
           find build -type f -name "Replicant303.exe" -exec cp {} package-staging/ \; || true
           
-          # Linux Standalone binary
-          if [ "${{ matrix.platform }}" = "linux" ]; then
+          # Linux Standalone binary (x86_64 and arm64)
+          if [ "${{ matrix.platform }}" = "linux" ] || [ "${{ matrix.platform }}" = "linux-arm64" ]; then
             find build -type f -executable -name "Replicant303" ! -name "*.so" ! -name "*.o" ! -path "*/CMakeFiles/*" -exec cp {} package-staging/ \; || true
           fi
 
@@ -250,6 +263,7 @@ jobs:
             ### 📦 Ready-to-use binaries
             * **macOS Universal:** `Replicant303-macOS-Universal.zip` (VST3, AU `.component` and Standalone, for Apple Silicon M1/M2/M3/M4 and Intel)
             * **Linux x86_64:** `Replicant303-Linux-x86_64.zip` (VST3 and Standalone for Ubuntu, Debian, Arch, Fedora)
+            * **Linux arm64:** `Replicant303-Linux-arm64.zip` (VST3 and Standalone for Raspberry Pi 4/5, Asahi Linux and other aarch64 systems)
             * **Windows x64:** `Replicant303-Windows-x64.zip` (VST3 and Standalone `.exe` for Windows 10 and 11)
 
             ### 🎨 Interface
@@ -318,7 +332,7 @@ jobs:
           {
             echo "## 🟢 Replicant303 ${TAG} published"
             echo
-            echo "All three platforms built and the release is live."
+            echo "All four platforms built and the release is live."
             echo
             echo "| | |"
             echo "|---|---|"
@@ -345,8 +359,9 @@ jobs:
           count=$(gh release view "${TAG}" --repo "$GITHUB_REPOSITORY" \
                     --json assets -q '[.assets[] | select(.name | endswith(".zip"))] | length')
           echo "Found ${count} zip asset(s) on ${TAG}"
-          if [[ "${count}" -lt 3 ]]; then
-            echo "::error::Expected 3 platform zips on ${TAG}, found ${count}. The release is incomplete."
+          # macOS Universal, Linux x86_64, Linux arm64, Windows x64.
+          if [[ "${count}" -lt 4 ]]; then
+            echo "::error::Expected 4 platform zips on ${TAG}, found ${count}. The release is incomplete."
             exit 1
           fi
 
@@ -411,7 +426,7 @@ jobs:
           # X counts any link as 23 chars, so the text is budgeted against 280
           # minus that; this body comes to ~185.
           TEXT=$(printf '%s\n%s' \
-            "Replicant303 ${TAG} is out - free TB-303 emulation: 4-pole diode ladder, 5 distortion models, 512-preset vault. VST3/AU/Standalone for macOS, Windows and Linux." \
+            "Replicant303 ${TAG} is out - free TB-303 emulation: 4-pole diode ladder, 5 distortion models, 512-preset vault. VST3/AU/Standalone for macOS, Windows and Linux (x86_64 + arm64)." \
             "${REPO_URL}/releases/tag/${TAG}")
 
           python3 tools/post_release_tweet.py "$TEXT"

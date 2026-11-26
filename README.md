@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Virtual Analog TB-303 Emulation with an 8 × 16 Pattern Sequencer, a 512-Preset Vault, Two Panel Skins and a Multi-Distortion Engine</strong><br>
-  <em>Audio Plugin: VST3 • AU • Standalone for macOS, Windows, and Linux</em>
+  <em>Audio Plugin: VST3 • AU • Standalone for macOS, Windows, and Linux (x86_64 + arm64)</em>
 </p>
 
 <p align="center">
@@ -197,6 +197,8 @@ Download pre-built packages for your operating system from [Releases](https://gi
   * AU: `~/Library/Audio/Plug-Ins/Components/Replicant303.component`
 * **Linux:**
   * VST3: `~/.vst3/Replicant303.vst3` (or `/usr/lib/vst3/`)
+  * Both **x86_64** and **arm64** builds ship. Use the arm64 package on aarch64
+    systems (Raspberry Pi 4/5, Asahi Linux, ARM workstations and servers).
 * **Windows:**
   * VST3: `C:\Program Files\Common Files\VST3\Replicant303.vst3`
 
@@ -205,6 +207,8 @@ Download pre-built packages for your operating system from [Releases](https://gi
 ## 🛠️ Building from Source
 
 Requires **CMake 3.22+**, **Ninja** or **Make**, and a **C++20** compiler. JUCE 8 is fetched automatically.
+The build is architecture-neutral: on aarch64 the same commands produce the arm64
+VST3 and Standalone, with no cross-compilation flags and no arch-specific source.
 
 ```bash
 # 1. Clone repository
@@ -231,7 +235,7 @@ round-trip, the waveform dropdown and the drawer animation:
 ```bash
 ninja -C build run_tests
 ./build/run_tests                 # macOS / Windows
-xvfb-run -a ./build/run_tests     # Linux, without a display
+xvfb-run -a ./build/run_tests     # Linux, without a display (x86_64 and arm64)
 ```
 
 ### Refreshing the panel screenshots
@@ -275,9 +279,14 @@ python3 tools/make_promo.py
 Automated multi-platform builds run via `.github/workflows/build.yml` on every push and tag:
 * **macOS Universal Binary** (Apple Silicon M1/M2/M3/M4 + Intel x86_64)
 * **Linux x86_64** (Ubuntu, Debian, Arch, Fedora)
+* **Linux arm64** (Raspberry Pi 4/5, Asahi Linux and other aarch64 systems)
 * **Windows x64** (Windows 10 / 11)
 
-The Linux job also runs the headless regression suite and verifies that the
+The arm64 artifacts are compiled and tested natively on GitHub's arm64 runners, so
+they are never cross-compiled. Both Linux jobs use the Ubuntu 22.04 image, giving
+the two Linux packages the same glibc baseline.
+
+Both Linux jobs also run the headless regression suite and verify that the
 checked-in `presets/` examples match the generator output.
 
 ---
